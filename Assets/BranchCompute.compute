@@ -1,0 +1,68 @@
+﻿#pragma kernel ComputeFinalPositions
+#pragma kernel ComputeSiblingPressure
+
+struct FixedBranchData
+{
+    int SelfIndex;
+    int ParentIndex;
+    int ImmediateChildenCount;
+};
+
+StructuredBuffer<FixedBranchData> _BranchBuffer;
+
+RWStructuredBuffer<float2> _AllPositionsBuffer;
+
+struct VariableBranchData
+{
+    float3 Pos;
+    float2 CurrentSiblingPressure;
+    float2 ChildrenPositionSum;
+};
+
+RWStructuredBuffer<VariableBranchData> _BranchPointBuffer;
+
+[numthreads(128, 1, 1)]
+void ComputeFinalPositions(uint3 id : SV_DispatchThreadID)
+{
+    FixedBranchData fixedData = _BranchBuffer[id.x];
+    VariableBranchData variableData = _BranchPointBuffer[id.x];
+    float2 childrenAverage = variableData.ChildrenPositionSum / fixedData.ImmediateChildenCount;
+    //TODO:
+    //  Pull the position towards the children average
+    //  Pull the position towards the parent
+    //  Push the position away from the sibling pressure
+}
+
+[numthreads(128, 1, 1)]
+void PushChildPositions(uint3 id : SV_DispatchThreadID)
+{
+    FixedBranchData selfData = _BranchBuffer[id.x];
+    VariableBranchData target = _BranchPointBuffer[selfData.ParentIndex];
+    target.ChildrenPositionSum += _AllPositionsBuffer[selfData.SelfIndex];
+}
+
+
+struct SiblingPair
+{
+    int SelfIndex;
+    int SiblingIndex;
+};
+
+StructuredBuffer<SiblingPair> _SibblingPairsBuffer;
+
+float2 GetSiblingPressure(float2 self, float2 sibling)
+{
+    //TODO: THIS
+    return 0; 
+}
+
+[numthreads(128, 1, 1)]
+void ComputeSiblingPressure(uint3 id : SV_DispatchThreadID)
+{
+    SiblingPair myPair = _SibblingPairsBuffer[id.x];
+    float2 selfPosition = _AllPositionsBuffer[myPair.SelfIndex];
+    float2 siblingPosition = _AllPositionsBuffer[myPair.SiblingIndex];
+
+    float2 siblingPressure = GetSiblingPressure(selfPosition, siblingPosition);
+    _BranchPointBuffer[myPair.SelfIndex].CurrentSiblingPressure += siblingPosition;
+}

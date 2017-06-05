@@ -30,7 +30,7 @@ public class MainScript : MonoBehaviour
         DataProcessor processor = new DataProcessor(rawDataFolder);
         RootNode = processor.ProcessData();
         _positionManager = new PositionManager(RootNode);
-        GameObject rootGameObject = DrawNode(RootNode, null, 0, _positionManager.GetPositionersDictionary());
+        DrawNode(RootNode, null, 0, _positionManager.GetPositionersDictionary());
     }
 
     private void Update()

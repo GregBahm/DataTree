@@ -79,7 +79,7 @@
 				float3 scaler = GetScaler(vertKey);
 				v.vertex.xyz *= scaler;
 				float4 newPos = v.vertex + float4(rootPos, 0);
-				float colorKey = lerp(_BranchColorStart, _BranchColorEnd, vertKey);
+				float colorKey = lerp(_StartScale, _EndScale, vertKey);
 				 
 				o.vertex = UnityObjectToClipPos(newPos);
 				o.branchColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey);

@@ -15,15 +15,11 @@ public class PrototypingNodeScript : MonoBehaviour
     private float GetScale(Node node)
     {
         float scaleCount = node.TotalChildCount + 1;
-        float relativeScale = scaleCount / Mothership.RootNode.TotalChildCount;
-        float ramp = 1 - Mathf.Pow(1 - relativeScale, Mothership.BranchThicknessRamp);
-        float ret = Mathf.Lerp(relativeScale, 1, ramp) * Mothership.BranchThickness;
         return Mathf.Pow(scaleCount * Mothership.BranchThickness, Mothership.BranchThicknessRamp);
     }
     
 	void Update ()
     {
-        UpdatePosition();
 
         Renderer.material.SetVector("_EndPoint", Positioner.Position);
         Renderer.material.SetVector("_StartPoint", Positioner.Parent.Position);
@@ -34,17 +30,9 @@ public class PrototypingNodeScript : MonoBehaviour
         Renderer.material.SetFloat("_StartScale", startScale);
         Renderer.material.SetFloat("_EndScale", endScale);
 
-        Renderer.material.SetFloat("_BranchColorStart", startScale);
-        Renderer.material.SetFloat("_BranchColorEnd", endScale);
-
         Renderer.localBounds = GetBranchBounds(Positioner.Position, Positioner.Parent.Position);
     }
-
-    private void UpdatePosition()
-    {
-        
-    }
-
+    
     private Bounds GetBranchBounds(Vector3 from, Vector3 to)
     {
         Vector3 midPoint = (from + to) / 2;
