@@ -21,28 +21,34 @@
 
 			float _AvatarSize;
 
+			float _BranchHeight;
+
+			float _BranchThickness;
+			float _BranchThicknessRamp;
+			 
 			struct MeshData
 			{
 				float3 Pos;
 				float2 Uvs;
 			};
-
-
-			struct BranchData
+			struct FixedBranchData
 			{
-				int StartIndex;
-				int EndIndex;
+				int ParentIndex;
+				int ImmediateChildenCount;
+				int BranchLevel;
+				float LevelOffset;
+				int Scale;
 			};
-
-			struct BranchPointData
+			struct VariableBranchData
 			{
-				float3 Pos;
-				float Scale;
+				float2 Pos;
+				float2 CurrentSiblingPressure;
+				float2 ChildrenPositionSum;
 			};
 
 			StructuredBuffer<MeshData> _MeshBuffer;
-			StructuredBuffer<BranchData> _BranchBuffer;
-			StructuredBuffer<BranchPointData> _BranchPointBuffer;
+			StructuredBuffer<VariableBranchData> _VariableDataBuffer;
+			StructuredBuffer<FixedBranchData> _FixedDataBuffer;
 
 			struct v2f
 			{
@@ -54,6 +60,11 @@
 				float startScale : TEXCOORD4;
 				float endScale : TEXCOORD5;
 			};
+
+			float GetBaseScale(int scaleBase)
+			{
+				return pow(scaleBase * _BranchThickness, _BranchThicknessRamp);
+			}
 
 			float Ease(float t)
 			{
@@ -80,18 +91,25 @@
 				return eased;
 			}
 
+			float3 GetThreeDeePos(float2 xzPos, int level, float levelOffset)
+			{
+				float yPos = level * _BranchHeight + levelOffset;
+				return float3(xzPos.x, yPos, xzPos.y);
+			}
+
 			v2f vert(uint meshId : SV_VertexID, uint instanceId : SV_InstanceID)
 			{
-				MeshData meshData = _MeshBuffer[meshId];
-				BranchData myBranchData = _BranchBuffer[instanceId];
-				BranchPointData startData = _BranchPointBuffer[myBranchData.StartIndex];
-				BranchPointData endData = _BranchPointBuffer[myBranchData.EndIndex];
-				float3 startPoint = startData.Pos;
-				float3 endPoint = endData.Pos;
-				float startScale = startData.Scale;
-				float endScale = endData.Scale;
-
 				v2f o;
+				MeshData meshData = _MeshBuffer[meshId];
+				FixedBranchData fixedStartData = _FixedDataBuffer[instanceId];
+				VariableBranchData variableStartData = _VariableDataBuffer[instanceId];
+				FixedBranchData fixedEndData = _FixedDataBuffer[fixedStartData.ParentIndex];
+				VariableBranchData variableEndData = _VariableDataBuffer[fixedStartData.ParentIndex];
+
+				float3 startPoint = GetThreeDeePos(variableStartData.Pos, fixedStartData.BranchLevel, fixedStartData.LevelOffset);
+				float3 endPoint = GetThreeDeePos(variableEndData.Pos, fixedEndData.BranchLevel, fixedEndData.LevelOffset);
+				float startScale = GetBaseScale(fixedStartData.Scale);
+				float endScale = GetBaseScale(fixedEndData.Scale);
 
 				float vertKey = meshData.Uvs.y;
 				float3 rootPos = GetRootPos(startPoint, endPoint, vertKey);
@@ -101,6 +119,7 @@
 				float colorKey = lerp(startScale, endScale, vertKey);
 				 
 				o.vertex = UnityObjectToClipPos(newPos);
+
 				o.branchColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey);
 				float2 screenRatio = float2(_ScreenParams.x / _ScreenParams.y, 1);
 				o.startClipSpace = UnityObjectToClipPos(startPoint).xy * screenRatio;
@@ -116,7 +135,7 @@
 				float startClip = length(i.startClipSpace - i.clipSpace) * _AvatarSize - i.startScale;
 				float endClip = length(i.endClipSpace - i.clipSpace) * _AvatarSize - i.endScale;
 				float finalClip = min(startClip, endClip);
-				clip(finalClip);
+				//clip(finalClip);
 				return float4(i.branchColor, 1);
 			}
 			ENDCG

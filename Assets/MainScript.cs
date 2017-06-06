@@ -26,7 +26,7 @@ public class MainScript : MonoBehaviour
     
     void Start()
     {
-        string rawDataFolder = @"C:\Users\Lisa\Source\Repos\DataTree\SamplePostData\Raw\";
+        string rawDataFolder = @"D:\DataTree\SamplePostData\Raw\";
         DataProcessor processor = new DataProcessor(rawDataFolder);
         RootNode = processor.ProcessData();
         _positionManager = new PositionManager(RootNode);

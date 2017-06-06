@@ -4,50 +4,287 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 
-public class BranchComputeRunner
+public class BranchComputeRunner : MonoBehaviour
 {
-    private readonly ComputeShader _computeShader;
-    private readonly Mesh _branchMesh;
+    public Color BranchSmallColor;
+    public Color BranchLargeColor;
+    public float AvatarSize;
+    public float BranchHeight;
+    public float BranchThickness;
+    public float BranchThicknessRamp;
+    public float DrawPower;
+    public float RepelPower;
 
-    private readonly int _meshBufferStride;
-    private readonly ComputeBuffer _meshBuffer;
+    public ComputeShader BranchCompute;
+    public Material BranchMat;
+    
+    public Mesh BranchMesh;
 
-    private readonly int _branchStride;
-    private readonly ComputeBuffer _branchBuffer;
+    private int _meshBufferStride = sizeof(float) * 3 + sizeof(float) * 2; // POS, UVs
+    private ComputeBuffer _meshBuffer;
 
-    private readonly int _branchPointStride;
-    private readonly ComputeBuffer _branchPointBuffer;
+    private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(float) + sizeof(int); // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, Scale
+    private ComputeBuffer _fixedDataBuffer;
 
-    private readonly int _finalPositionsKernel;
-    private readonly int _siblingPressureKernel;
+    private int _variableDataStride = sizeof(float) * 2 + sizeof(float) * 2 + sizeof(float) * 2; // Pos, CurrentSiblingPressure, ChildrenPositionSum
+    private ComputeBuffer _variableDataBuffer;
 
-    public BranchComputeRunner(ComputeShader computeShader,
-        Mesh branchMesh)
+    private int _siblingPairsStride = sizeof(int) + sizeof(int); // SelfIndex, SiblingIndex
+    private ComputeBuffer[] _siblingPairsBuffers;
+
+    private int _computeFinalPositionsKernel;
+    private int _computeSiblingPressureKernel;
+    private int _pushChildPositionsKernel;
+
+    private int _meshvertCount;
+    private int _nodeCount;
+    private int[] _siblingPairCounts;
+    private int[] _siblingBatchSizes;
+    private int _nodeBatchSize;
+    private const int BatchSize = 128;
+    struct MeshData
     {
-        _computeShader = computeShader;
-        _branchMesh = branchMesh;
-        _meshBuffer = GetMeshBuffer();
-        _branchBuffer = GetBranchBuffer();
-        _branchPointBuffer = GetBranchPointBuffer();
+        public Vector3 Pos;
+        public Vector2 Uvs;
+    }
+    struct FixedBranchData
+    {
+        public int ParentIndex;
+        public int ImmediateChildenCount;
+        public int BranchLevel;
+        public float LevelOffset;
+        public int Scale;
+    }
+    struct VariableBranchData
+    {
+        public Vector2 Pos;
+        public Vector2 CurrentSiblingPressure;
+        public Vector2 ChildrenPositionSum;
+    }
+    struct SiblingPair
+    {
+        public int SelfIndex;
+        public int SiblingIndex;
     }
 
-    private ComputeBuffer GetBranchPointBuffer()
+    struct SiblingsSetupData
     {
-        throw new NotImplementedException();
+        public int[] PairCounts;
+        public ComputeBuffer[] Buffers;
     }
 
-    private ComputeBuffer GetBranchBuffer()
+    struct SiblingSetupDatum
     {
-        throw new NotImplementedException();
+        public int PairsCount;
+        public ComputeBuffer Buffer;
     }
 
-    private ComputeBuffer GetMeshBuffer()
+    void Start()
     {
-        throw new NotImplementedException();
+        string rawDataFolder = @"D:\DataTree\SamplePostData\Raw\";
+        DataProcessor processor = new DataProcessor(rawDataFolder);
+        Node rootNode = processor.ProcessData();
+        
+        _computeFinalPositionsKernel = BranchCompute.FindKernel("ComputeFinalPositions");
+        _computeSiblingPressureKernel = BranchCompute.FindKernel("ComputeSiblingPressure");
+        _pushChildPositionsKernel = BranchCompute.FindKernel("PushChildPositions");
+        _meshvertCount = BranchMesh.triangles.Length;
+        _meshBuffer = GetMeshBuffer(BranchMesh);
+        
+        _nodeCount = rootNode.TotalChildCount + 1;
+        Node[] nodeList = GetNodeList(rootNode);
+        Dictionary<Node, int> lookupTable = GetLookupTable(nodeList);
+        _variableDataBuffer = GetVariableBuffer(rootNode, lookupTable);
+        _fixedDataBuffer = GetFixedDataBuffer(nodeList, lookupTable);
+
+        SiblingsSetupData siblingSetup = GetSibblingSetup(nodeList, lookupTable);
+        _siblingPairCounts = siblingSetup.PairCounts;
+        _siblingPairsBuffers = siblingSetup.Buffers;
+
+        _nodeBatchSize = Mathf.CeilToInt((float)_nodeCount / BatchSize);
+        _siblingBatchSizes = _siblingPairCounts.Select(item => Mathf.CeilToInt((float)item / BatchSize)).ToArray();
     }
 
-    public void DispatchCompute()
+    private Node[] GetNodeList(Node rootNode)
     {
+        List<Node> ret = new List<Node>();
+        PopulateNodeList(ret, rootNode);
+        return ret.ToArray();
+    }
 
+    private void PopulateNodeList(List<Node> ret, Node node)
+    {
+        ret.Add(node);
+        foreach (Node child in node.Children)
+        {
+            PopulateNodeList(ret, child);
+        }
+    }
+
+    private Dictionary<Node, int> GetLookupTable(Node[] nodeList)
+    {
+        Dictionary<Node, int> ret = new Dictionary<Node, int>();
+        for (int i = 0; i < nodeList.Length; i++)
+        {
+            ret.Add(nodeList[i], i);
+        }
+        return ret;
+    }
+
+    private void Update()
+    {
+        BranchCompute.SetFloat("_DrawPower", DrawPower);
+        BranchCompute.SetFloat("_RepelPower", RepelPower);
+        BranchCompute.SetBuffer(_computeFinalPositionsKernel, "_VariableDataBuffer", _variableDataBuffer);
+        BranchCompute.SetBuffer(_computeFinalPositionsKernel, "_FixedDataBuffer", _fixedDataBuffer);
+        BranchCompute.SetBuffer(_pushChildPositionsKernel, "_VariableDataBuffer", _variableDataBuffer);
+        BranchCompute.SetBuffer(_pushChildPositionsKernel, "_FixedDataBuffer", _fixedDataBuffer);
+        BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_VariableDataBuffer", _variableDataBuffer);
+        
+        for (int i = 0; i < _siblingPairsBuffers.Length; i++)
+        {
+            BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_SiblingPairsBuffer", _siblingPairsBuffers[i]);
+            BranchCompute.Dispatch(_computeSiblingPressureKernel, _siblingBatchSizes[i], 1, 1);
+        }
+        BranchCompute.Dispatch(_pushChildPositionsKernel, _nodeBatchSize, 1, 1);
+        BranchCompute.Dispatch(_computeFinalPositionsKernel, _nodeBatchSize, 1, 1);
+    } 
+
+    private SiblingsSetupData GetSibblingSetup(Node[] nodes, Dictionary<Node, int> lookupTable)
+    {
+        int potentialLayers = nodes.Max(item => item.ParentCount);
+        List<int> pairCounts = new List<int>();
+        List<ComputeBuffer> buffers = new List<ComputeBuffer>();
+        for (int i = 0; i < potentialLayers; i++)
+        {
+            SiblingSetupDatum layerData = GetSibblingPairsBuffers(nodes, i, lookupTable);
+            if(layerData.PairsCount > 0)
+            {
+                buffers.Add(layerData.Buffer);
+                pairCounts.Add(layerData.PairsCount);
+            }
+        }
+        return new SiblingsSetupData() { Buffers = buffers.ToArray(), PairCounts = pairCounts.ToArray() };
+    }
+
+    private SiblingSetupDatum GetSibblingPairsBuffers(Node[] nodes, int layer, Dictionary<Node, int> lookupTable)
+    {
+        Node[] siblingsOfLayer = nodes.Where(item => item.ParentCount == layer).ToArray();
+        int siblingPairs = siblingsOfLayer.Length * siblingsOfLayer.Length - siblingsOfLayer.Length;
+        if(siblingPairs == 0)
+        {
+            return new SiblingSetupDatum() { Buffer = null, PairsCount = 0 };
+        }
+        SiblingPair[] data = new SiblingPair[siblingPairs];
+        ComputeBuffer buffer = new ComputeBuffer(siblingPairs, _siblingPairsStride);
+
+        int incrementer = 0;
+        for (int i = 0; i < siblingsOfLayer.Length; i++)
+        {
+            for (int j = 0; j < siblingsOfLayer.Length; j++)
+            {
+                if(i == j)
+                {
+                    break;
+                }
+                int selfIndex = lookupTable[nodes[i]];
+                int siblingIndex = lookupTable[nodes[j]];
+                data[incrementer] = new SiblingPair() { SelfIndex = selfIndex, SiblingIndex = siblingIndex };
+                incrementer++;
+            }
+        }
+
+        buffer.SetData(data);
+        return new SiblingSetupDatum() { Buffer = buffer, PairsCount = siblingPairs };
+    }
+
+    private FixedBranchData GetFixedBranchDatum(Node node, Dictionary<Node, int> lookupTable)
+    {
+        FixedBranchData ret = new FixedBranchData();
+        ret.BranchLevel = node.ParentCount;
+        ret.ImmediateChildenCount = node.ImmediateChildCount;
+        ret.LevelOffset = UnityEngine.Random.value + .5f;
+        ret.Scale = node.TotalChildCount + 1;
+        ret.ParentIndex = node.Parent == null ? 0 : lookupTable[node.Parent];
+        return ret;
+    }
+    private ComputeBuffer GetFixedDataBuffer(Node[] nodes, Dictionary<Node, int> lookupTable)
+    {
+        FixedBranchData[] data = new FixedBranchData[_nodeCount];
+        ComputeBuffer buffer = new ComputeBuffer(_nodeCount, _fixedDataStride);
+        for (int i = 0; i < _nodeCount; i++)
+        {
+            data[i] = GetFixedBranchDatum(nodes[i], lookupTable);
+        }
+        buffer.SetData(data);
+        return buffer;
+    }
+
+    private ComputeBuffer GetVariableBuffer(Node rootNode, Dictionary<Node, int> lookupTable)
+    {
+        VariableBranchData[] data = new VariableBranchData[_nodeCount];
+        ComputeBuffer buffer = new ComputeBuffer(_nodeCount, _variableDataStride);
+        SetVariableBranchData(rootNode, Vector2.zero, data, lookupTable);
+        buffer.SetData(data);
+        return buffer;
+    }
+
+    private void SetVariableBranchData(Node currentNode, Vector2 parentPos, VariableBranchData[] dataToSet, Dictionary<Node, int> lookupTable)
+    {
+        float newX = parentPos.x + (UnityEngine.Random.value * 2 - 1);
+        float newY = parentPos.y + (UnityEngine.Random.value * 2 - 1);
+        Vector2 nodePos = new Vector2(newX, newY); //TODO: in the future, make this smarter
+
+        VariableBranchData ret = new VariableBranchData();
+        ret.Pos = nodePos;
+        ret.CurrentSiblingPressure = Vector2.zero;
+        ret.ChildrenPositionSum = Vector2.zero;
+
+        dataToSet[lookupTable[currentNode]] = ret;
+
+        foreach (Node child in currentNode.Children)
+        {
+            SetVariableBranchData(child, nodePos, dataToSet, lookupTable);
+        }
+    }
+
+    private ComputeBuffer GetMeshBuffer(Mesh mesh)
+    {
+        MeshData[] meshVerts = new MeshData[_meshvertCount];
+        ComputeBuffer ret = new ComputeBuffer(_meshvertCount, _meshBufferStride);
+        for (int i = 0; i < _meshvertCount; i++)
+        {
+            meshVerts[i].Pos = mesh.vertices[mesh.triangles[_meshvertCount - i - 1]];
+            meshVerts[i].Uvs = mesh.uv[mesh.triangles[_meshvertCount - i - 1]];
+        }
+        ret.SetData(meshVerts);
+        return ret;
+    }
+
+    private void OnRenderObject()
+    {
+        BranchMat.SetFloat("_AvatarSize", AvatarSize);
+        BranchMat.SetFloat("_BranchHeight", BranchHeight);
+        BranchMat.SetFloat("_BranchThickness", BranchThickness);
+        BranchMat.SetFloat("_BranchThicknessRamp", BranchThicknessRamp);
+        BranchMat.SetColor("_BranchSmallColor", BranchSmallColor);
+        BranchMat.SetColor("_BranchLargeColor", BranchLargeColor);
+
+        BranchMat.SetBuffer("_MeshBuffer", _meshBuffer);
+        BranchMat.SetBuffer("_FixedDataBuffer", _fixedDataBuffer);
+        BranchMat.SetBuffer("_VariableDataBuffer", _variableDataBuffer);
+        BranchMat.SetPass(0);
+        Graphics.DrawProcedural(MeshTopology.Quads, _meshvertCount, _nodeCount);
+    }
+
+    private void OnDestroy()
+    {
+        _meshBuffer.Dispose();
+        _fixedDataBuffer.Dispose();
+        _variableDataBuffer.Dispose();
+        for (int i = 0; i < _siblingPairsBuffers.Length; i++)
+        {
+            _siblingPairsBuffers[i].Dispose();
+        }
     }
 }
