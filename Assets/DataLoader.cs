@@ -367,4 +367,15 @@ public class Node
         }
         return GetParentCount(parent.Parent, count + 1);
     }
+
+    public override string ToString()
+    {
+        string ret = SubUrl;
+        if(Parent != null)
+        {
+            ret += " child of " + Parent.SubUrl;
+        }
+        ret += ", with " + ImmediateChildCount + " kids and " + TotalChildCount + " descendents";
+        return ret;
+    }
 }

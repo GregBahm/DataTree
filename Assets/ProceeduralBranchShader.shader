@@ -93,7 +93,7 @@
 
 			float3 GetThreeDeePos(float2 xzPos, int level, float levelOffset)
 			{
-				float yPos = level * _BranchHeight + levelOffset;
+				float yPos = level * _BranchHeight;// + levelOffset;
 				return float3(xzPos.x, yPos, xzPos.y);
 			}
 
@@ -135,7 +135,7 @@
 				float startClip = length(i.startClipSpace - i.clipSpace) * _AvatarSize - i.startScale;
 				float endClip = length(i.endClipSpace - i.clipSpace) * _AvatarSize - i.endScale;
 				float finalClip = min(startClip, endClip);
-				//clip(finalClip);
+				clip(finalClip);
 				return float4(i.branchColor, 1);
 			}
 			ENDCG

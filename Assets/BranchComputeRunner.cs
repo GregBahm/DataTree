@@ -13,7 +13,8 @@ public class BranchComputeRunner : MonoBehaviour
     public float BranchThickness;
     public float BranchThicknessRamp;
     public float DrawPower;
-    public float RepelPower;
+    public float RepelDistanceTarget;
+    public float RepelDrag;
 
     public ComputeShader BranchCompute;
     public Material BranchMat;
@@ -65,6 +66,11 @@ public class BranchComputeRunner : MonoBehaviour
     {
         public int SelfIndex;
         public int SiblingIndex;
+
+        public override string ToString()
+        {
+            return SelfIndex + " to " + SiblingIndex;
+        }
     }
 
     struct SiblingsSetupData
@@ -134,19 +140,21 @@ public class BranchComputeRunner : MonoBehaviour
     private void Update()
     {
         BranchCompute.SetFloat("_DrawPower", DrawPower);
-        BranchCompute.SetFloat("_RepelPower", RepelPower);
+        BranchCompute.SetFloat("_RepelDrag", RepelDrag);
+        BranchCompute.SetFloat("_RepelDistanceTarget", RepelDistanceTarget);
         BranchCompute.SetBuffer(_computeFinalPositionsKernel, "_VariableDataBuffer", _variableDataBuffer);
         BranchCompute.SetBuffer(_computeFinalPositionsKernel, "_FixedDataBuffer", _fixedDataBuffer);
         BranchCompute.SetBuffer(_pushChildPositionsKernel, "_VariableDataBuffer", _variableDataBuffer);
         BranchCompute.SetBuffer(_pushChildPositionsKernel, "_FixedDataBuffer", _fixedDataBuffer);
         BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_VariableDataBuffer", _variableDataBuffer);
-        
+
         for (int i = 0; i < _siblingPairsBuffers.Length; i++)
         {
             BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_SiblingPairsBuffer", _siblingPairsBuffers[i]);
             BranchCompute.Dispatch(_computeSiblingPressureKernel, _siblingBatchSizes[i], 1, 1);
         }
-        BranchCompute.Dispatch(_pushChildPositionsKernel, _nodeBatchSize, 1, 1);
+        
+        //BranchCompute.Dispatch(_pushChildPositionsKernel, _nodeBatchSize, 1, 1);
         BranchCompute.Dispatch(_computeFinalPositionsKernel, _nodeBatchSize, 1, 1);
     } 
 
@@ -187,8 +195,8 @@ public class BranchComputeRunner : MonoBehaviour
                 {
                     break;
                 }
-                int selfIndex = lookupTable[nodes[i]];
-                int siblingIndex = lookupTable[nodes[j]];
+                int selfIndex = lookupTable[siblingsOfLayer[i]];
+                int siblingIndex = lookupTable[siblingsOfLayer[j]];
                 data[incrementer] = new SiblingPair() { SelfIndex = selfIndex, SiblingIndex = siblingIndex };
                 incrementer++;
             }
@@ -200,12 +208,14 @@ public class BranchComputeRunner : MonoBehaviour
 
     private FixedBranchData GetFixedBranchDatum(Node node, Dictionary<Node, int> lookupTable)
     {
-        FixedBranchData ret = new FixedBranchData();
-        ret.BranchLevel = node.ParentCount;
-        ret.ImmediateChildenCount = node.ImmediateChildCount;
-        ret.LevelOffset = UnityEngine.Random.value + .5f;
-        ret.Scale = node.TotalChildCount + 1;
-        ret.ParentIndex = node.Parent == null ? 0 : lookupTable[node.Parent];
+        FixedBranchData ret = new FixedBranchData()
+        {
+            BranchLevel = node.ParentCount,
+            ImmediateChildenCount = node.ImmediateChildCount,
+            LevelOffset = UnityEngine.Random.value + .5f,
+            Scale = node.TotalChildCount + 1,
+            ParentIndex = node.Parent == null ? 0 : lookupTable[node.Parent]
+        };
         return ret;
     }
     private ComputeBuffer GetFixedDataBuffer(Node[] nodes, Dictionary<Node, int> lookupTable)
@@ -235,11 +245,12 @@ public class BranchComputeRunner : MonoBehaviour
         float newY = parentPos.y + (UnityEngine.Random.value * 2 - 1);
         Vector2 nodePos = new Vector2(newX, newY); //TODO: in the future, make this smarter
 
-        VariableBranchData ret = new VariableBranchData();
-        ret.Pos = nodePos;
-        ret.CurrentSiblingPressure = Vector2.zero;
-        ret.ChildrenPositionSum = Vector2.zero;
-
+        VariableBranchData ret = new VariableBranchData()
+        {
+            Pos = nodePos,
+            CurrentSiblingPressure = Vector2.zero,
+            ChildrenPositionSum = Vector2.zero
+        };
         dataToSet[lookupTable[currentNode]] = ret;
 
         foreach (Node child in currentNode.Children)

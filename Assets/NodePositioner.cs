@@ -54,7 +54,7 @@ public class NodePositioner
         Vector2 forceVector = GetForceVector(repelPower);
         Vector2 newPosition = _currentPosition + forceVector;
         newPosition = AttractToParent(newPosition, attractPower);
-        newPosition = AttractToChildren(newPosition, attractPower);
+        //newPosition = AttractToChildren(newPosition, attractPower);
         _currentPosition = newPosition;
         _publicPosition = new Vector3(_currentPosition.x, _heightRand + (_branchHeight * height), _currentPosition.y);
     }
@@ -90,19 +90,14 @@ public class NodePositioner
     private Vector2 AttractToParent(Vector2 newPosition, float attractPower)
     {
         Vector2 parentPos = _parent == null ? Vector2.zero : _parent._currentPosition;
-        float distToParent = (parentPos - _currentPosition).sqrMagnitude;
         return Vector2.Lerp(newPosition, parentPos, Mathf.Clamp01(attractPower));
     }
 
     private Vector2 GetRepelForce(NodePositioner from, float repelPower)
     {
-        Vector2 repelVector = from._currentPosition - _currentPosition;
-        if (repelVector.sqrMagnitude < float.Epsilon)
-        {
-            return new Vector2(UnityEngine.Random.value / 100, UnityEngine.Random.value / 100);
-        }
-        float squareDist = repelVector.sqrMagnitude;
-        Vector2 ret = repelPower * repelVector.normalized * (0.00001f / squareDist);
-        return -ret;
+        Vector2 repelVector = _currentPosition - from._currentPosition;
+        float dist = repelVector.magnitude;
+        float power = Mathf.Max(0, repelPower - dist) / repelPower;
+        return repelVector.normalized * power;
     }
 }
