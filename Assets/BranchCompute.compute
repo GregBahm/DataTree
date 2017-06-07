@@ -1,6 +1,5 @@
 ﻿#pragma kernel ComputeFinalPositions
 #pragma kernel ComputeSiblingPressure
-#pragma kernel PushChildPositions
 
 struct FixedBranchData
 {
@@ -14,13 +13,11 @@ struct VariableBranchData
 {
     float2 Pos;
     float2 CurrentSiblingPressure;
-    float2 ChildrenPositionSum;
 };
 struct SiblingPair
 {
 	int SelfIndex;
 	int SiblingIndex;
-	int ValidPair;
 };
 
 RWStructuredBuffer<VariableBranchData> _VariableDataBuffer;
@@ -28,18 +25,8 @@ StructuredBuffer<FixedBranchData> _FixedDataBuffer;
 StructuredBuffer<SiblingPair> _SiblingPairsBuffer;
 
 float _DrawPower;
-float _RepelDistanceTarget;
-float _RepelDrag;
-
-float2 DrawToChildren(float2 pos, float2 childrenPositionSum, int immediateChildrenCount)
-{
-	if (immediateChildrenCount == 0)
-	{
-		return pos;
-	}
-	float2 childrenAverage = childrenPositionSum / immediateChildrenCount;
-	return lerp(pos, childrenAverage, _DrawPower);
-}
+float _RepelDist;
+float _RepelPower;
 
 float2 DrawToParent(float2 pos, float2 parentPos)
 {
@@ -54,30 +41,20 @@ void ComputeFinalPositions(uint3 id : SV_DispatchThreadID)
 	VariableBranchData parentData = _VariableDataBuffer[fixedData.ParentIndex];
 	float2 newPos = variableData.Pos;
 	newPos += variableData.CurrentSiblingPressure;
-    //newPos = DrawToChildren(newPos, variableData.ChildrenPositionSum, fixedData.ImmediateChildenCount);
 	newPos = DrawToParent(newPos, parentData.Pos);
 
 	variableData.Pos = newPos;
 	variableData.CurrentSiblingPressure = float2(0, 0);
-	variableData.ChildrenPositionSum = float2(0, 0);
 	_VariableDataBuffer[id.x] = variableData;
-}
-
-[numthreads(128, 1, 1)]
-void PushChildPositions(uint3 id : SV_DispatchThreadID)
-{
-    FixedBranchData selfData = _FixedDataBuffer[id.x];
-    VariableBranchData target = _VariableDataBuffer[selfData.ParentIndex];
-    target.ChildrenPositionSum += _VariableDataBuffer[id.x].Pos;
 }
 
 float2 GetSiblingPressure(float2 self, float2 sibling)
 {
 	float2 diff = self - sibling;
-	float dist = length(self);
-	float2 diffNormalized = normalize(diff);
-	float power = max(0, _RepelDistanceTarget - dist) / _RepelDistanceTarget;
-	return diffNormalized * power * _RepelDrag;
+	float dist = length(diff);
+	float2 normalized = normalize(diff);
+	float power = max(0, _RepelDist - dist) / _RepelDist;
+	return normalized * power * _RepelPower;
 }
 
 [numthreads(128, 1, 1)]
@@ -86,12 +63,12 @@ void ComputeSiblingPressure(uint3 id : SV_DispatchThreadID)
 	SiblingPair myPair = _SiblingPairsBuffer[id.x];
 	if (myPair.SelfIndex != 0)
 	{
-		VariableBranchData myData = _VariableDataBuffer[myPair.SelfIndex];
-		float2 selfPosition = myData.Pos;
-		float2 siblingPosition = _VariableDataBuffer[myPair.SiblingIndex].Pos;
+		VariableBranchData selfData = _VariableDataBuffer[myPair.SelfIndex];
+		VariableBranchData siblingData = _VariableDataBuffer[myPair.SiblingIndex];
+		float2 selfPosition = selfData.Pos;
+		float2 siblingPosition = siblingData.Pos;
 
 		float2 newSiblingPressure = GetSiblingPressure(selfPosition, siblingPosition);
-		myData.CurrentSiblingPressure = myData.CurrentSiblingPressure + newSiblingPressure;
-		_VariableDataBuffer[myPair.SelfIndex] = myData;
+		_VariableDataBuffer[myPair.SelfIndex].CurrentSiblingPressure += newSiblingPressure;
 	}
 }

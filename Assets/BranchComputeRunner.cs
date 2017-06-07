@@ -12,9 +12,11 @@ public class BranchComputeRunner : MonoBehaviour
     public float BranchHeight;
     public float BranchThickness;
     public float BranchThicknessRamp;
+    [Range(0, 1)]
     public float DrawPower;
-    public float RepelDistanceTarget;
-    public float RepelDrag;
+    public float RepelDistance;
+    [Range(0, 1)]
+    public float RepelPower;
 
     public ComputeShader BranchCompute;
     public Material BranchMat;
@@ -27,7 +29,7 @@ public class BranchComputeRunner : MonoBehaviour
     private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(float) + sizeof(int); // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, Scale
     private ComputeBuffer _fixedDataBuffer;
 
-    private int _variableDataStride = sizeof(float) * 2 + sizeof(float) * 2 + sizeof(float) * 2; // Pos, CurrentSiblingPressure, ChildrenPositionSum
+    private int _variableDataStride = sizeof(float) * 2 + sizeof(float) * 2; // Pos, CurrentSiblingPressure, ChildrenPositionSum
     private ComputeBuffer _variableDataBuffer;
 
     private int _siblingPairsStride = sizeof(int) + sizeof(int); // SelfIndex, SiblingIndex
@@ -35,7 +37,6 @@ public class BranchComputeRunner : MonoBehaviour
 
     private int _computeFinalPositionsKernel;
     private int _computeSiblingPressureKernel;
-    private int _pushChildPositionsKernel;
 
     private int _meshvertCount;
     private int _nodeCount;
@@ -60,17 +61,11 @@ public class BranchComputeRunner : MonoBehaviour
     {
         public Vector2 Pos;
         public Vector2 CurrentSiblingPressure;
-        public Vector2 ChildrenPositionSum;
     }
     struct SiblingPair
     {
         public int SelfIndex;
         public int SiblingIndex;
-
-        public override string ToString()
-        {
-            return SelfIndex + " to " + SiblingIndex;
-        }
     }
 
     struct SiblingsSetupData
@@ -93,14 +88,13 @@ public class BranchComputeRunner : MonoBehaviour
         
         _computeFinalPositionsKernel = BranchCompute.FindKernel("ComputeFinalPositions");
         _computeSiblingPressureKernel = BranchCompute.FindKernel("ComputeSiblingPressure");
-        _pushChildPositionsKernel = BranchCompute.FindKernel("PushChildPositions");
         _meshvertCount = BranchMesh.triangles.Length;
         _meshBuffer = GetMeshBuffer(BranchMesh);
         
         _nodeCount = rootNode.TotalChildCount + 1;
         Node[] nodeList = GetNodeList(rootNode);
         Dictionary<Node, int> lookupTable = GetLookupTable(nodeList);
-        _variableDataBuffer = GetVariableBuffer(rootNode, lookupTable);
+        _variableDataBuffer = GetVariableDataBuffer(rootNode, lookupTable);
         _fixedDataBuffer = GetFixedDataBuffer(nodeList, lookupTable);
 
         SiblingsSetupData siblingSetup = GetSibblingSetup(nodeList, lookupTable);
@@ -137,15 +131,10 @@ public class BranchComputeRunner : MonoBehaviour
         return ret;
     }
 
-    private void Update()
+    private void DispatchSiblingPressure()
     {
-        BranchCompute.SetFloat("_DrawPower", DrawPower);
-        BranchCompute.SetFloat("_RepelDrag", RepelDrag);
-        BranchCompute.SetFloat("_RepelDistanceTarget", RepelDistanceTarget);
-        BranchCompute.SetBuffer(_computeFinalPositionsKernel, "_VariableDataBuffer", _variableDataBuffer);
-        BranchCompute.SetBuffer(_computeFinalPositionsKernel, "_FixedDataBuffer", _fixedDataBuffer);
-        BranchCompute.SetBuffer(_pushChildPositionsKernel, "_VariableDataBuffer", _variableDataBuffer);
-        BranchCompute.SetBuffer(_pushChildPositionsKernel, "_FixedDataBuffer", _fixedDataBuffer);
+        BranchCompute.SetFloat("_RepelPower", RepelPower);
+        BranchCompute.SetFloat("_RepelDist", RepelDistance);
         BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_VariableDataBuffer", _variableDataBuffer);
 
         for (int i = 0; i < _siblingPairsBuffers.Length; i++)
@@ -153,9 +142,23 @@ public class BranchComputeRunner : MonoBehaviour
             BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_SiblingPairsBuffer", _siblingPairsBuffers[i]);
             BranchCompute.Dispatch(_computeSiblingPressureKernel, _siblingBatchSizes[i], 1, 1);
         }
-        
-        //BranchCompute.Dispatch(_pushChildPositionsKernel, _nodeBatchSize, 1, 1);
+
+        //BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_SiblingPairsBuffer", _siblingPairsBuffers[0]);
+        //BranchCompute.Dispatch(_computeSiblingPressureKernel, _siblingBatchSizes[0], 1, 1);
+    }
+
+    private void DispatchFinalPositioner()
+    {
+        BranchCompute.SetFloat("_DrawPower", DrawPower);
+        BranchCompute.SetBuffer(_computeFinalPositionsKernel, "_VariableDataBuffer", _variableDataBuffer);
+        BranchCompute.SetBuffer(_computeFinalPositionsKernel, "_FixedDataBuffer", _fixedDataBuffer);
         BranchCompute.Dispatch(_computeFinalPositionsKernel, _nodeBatchSize, 1, 1);
+    }
+
+    private void Update()
+    {
+        DispatchFinalPositioner();
+        DispatchSiblingPressure();
     } 
 
     private SiblingsSetupData GetSibblingSetup(Node[] nodes, Dictionary<Node, int> lookupTable)
@@ -183,26 +186,23 @@ public class BranchComputeRunner : MonoBehaviour
         {
             return new SiblingSetupDatum() { Buffer = null, PairsCount = 0 };
         }
-        SiblingPair[] data = new SiblingPair[siblingPairs];
+        List<SiblingPair> data = new List<SiblingPair>();
         ComputeBuffer buffer = new ComputeBuffer(siblingPairs, _siblingPairsStride);
-
-        int incrementer = 0;
+        
         for (int i = 0; i < siblingsOfLayer.Length; i++)
         {
             for (int j = 0; j < siblingsOfLayer.Length; j++)
             {
-                if(i == j)
+                if(i != j)
                 {
-                    break;
+                    int selfIndex = lookupTable[siblingsOfLayer[i]];
+                    int siblingIndex = lookupTable[siblingsOfLayer[j]];
+                    data.Add(new SiblingPair() { SelfIndex = selfIndex, SiblingIndex = siblingIndex });
                 }
-                int selfIndex = lookupTable[siblingsOfLayer[i]];
-                int siblingIndex = lookupTable[siblingsOfLayer[j]];
-                data[incrementer] = new SiblingPair() { SelfIndex = selfIndex, SiblingIndex = siblingIndex };
-                incrementer++;
             }
         }
 
-        buffer.SetData(data);
+        buffer.SetData(data.ToArray());
         return new SiblingSetupDatum() { Buffer = buffer, PairsCount = siblingPairs };
     }
 
@@ -230,7 +230,7 @@ public class BranchComputeRunner : MonoBehaviour
         return buffer;
     }
 
-    private ComputeBuffer GetVariableBuffer(Node rootNode, Dictionary<Node, int> lookupTable)
+    private ComputeBuffer GetVariableDataBuffer(Node rootNode, Dictionary<Node, int> lookupTable)
     {
         VariableBranchData[] data = new VariableBranchData[_nodeCount];
         ComputeBuffer buffer = new ComputeBuffer(_nodeCount, _variableDataStride);
@@ -245,13 +245,17 @@ public class BranchComputeRunner : MonoBehaviour
         float newY = parentPos.y + (UnityEngine.Random.value * 2 - 1);
         Vector2 nodePos = new Vector2(newX, newY); //TODO: in the future, make this smarter
 
+        int dataIndex = lookupTable[currentNode];
+        if (dataIndex == 0)
+        {
+            nodePos = Vector2.zero;
+        }
         VariableBranchData ret = new VariableBranchData()
         {
             Pos = nodePos,
             CurrentSiblingPressure = Vector2.zero,
-            ChildrenPositionSum = Vector2.zero
         };
-        dataToSet[lookupTable[currentNode]] = ret;
+        dataToSet[dataIndex] = ret;
 
         foreach (Node child in currentNode.Children)
         {

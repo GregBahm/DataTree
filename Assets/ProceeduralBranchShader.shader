@@ -43,7 +43,6 @@
 			{
 				float2 Pos;
 				float2 CurrentSiblingPressure;
-				float2 ChildrenPositionSum;
 			};
 
 			StructuredBuffer<MeshData> _MeshBuffer;
@@ -98,7 +97,7 @@
 			}
 
 			v2f vert(uint meshId : SV_VertexID, uint instanceId : SV_InstanceID)
-			{
+			{ 
 				v2f o;
 				MeshData meshData = _MeshBuffer[meshId];
 				FixedBranchData fixedStartData = _FixedDataBuffer[instanceId];
