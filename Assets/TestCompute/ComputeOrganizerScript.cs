@@ -6,6 +6,7 @@ using UnityEngine;
 public class ComputeOrganizerScript : MonoBehaviour
 {
     public int ObjectsCount;
+    private int _siblingPairsCount;
 
     [Range(0, 1000)]
     public float RepelDist;
@@ -34,7 +35,7 @@ public class ComputeOrganizerScript : MonoBehaviour
     private const int _siblingPressureStride = sizeof(int) * 2;
     private ComputeBuffer _siblingPressureBuffer;
 
-    private const int _batchSize = 1;
+    private const int _batchSize = 128;
 
     struct SiblingPair
     {
@@ -50,6 +51,7 @@ public class ComputeOrganizerScript : MonoBehaviour
         _meshBuffer = GetMeshBuffer(TestOrganizerMesh);
         _positionBuffer = GetDataBuffer();
         _siblingPairsBuffers = GetSiblingPairsBuffer();
+        _siblingPairsCount = (ObjectsCount * ObjectsCount - ObjectsCount) / 2;
         _siblingPressureBuffer = new ComputeBuffer(ObjectsCount, _siblingPressureStride);
     }
 
@@ -58,12 +60,9 @@ public class ComputeOrganizerScript : MonoBehaviour
         List<SiblingPair> data = new List<SiblingPair>();
         for (int i = 0; i < ObjectsCount; i++)
         {
-            for (int j = 0; j < ObjectsCount; j++)
+            for (int j = 0; j < i; j++)
             {
-                if(i != j)
-                {
-                    data.Add(new SiblingPair() { SelfIndex = i, SiblingIndex = j });
-                }
+                data.Add(new SiblingPair() { SelfIndex = i, SiblingIndex = j });
             }
         }
         ComputeBuffer buffer = new ComputeBuffer(data.Count, _siblingPairsStride);
@@ -106,7 +105,7 @@ public class ComputeOrganizerScript : MonoBehaviour
         TestOrganizerCompute.SetBuffer(_siblingPressureKernel, "_SiblingPairsBuffer", _siblingPairsBuffers);
         TestOrganizerCompute.SetBuffer(_siblingPressureKernel, "_SiblingPressureBuffer", _siblingPressureBuffer);
 
-        int siblingBatchSize = Mathf.CeilToInt((float)(ObjectsCount * ObjectsCount - ObjectsCount) / _batchSize);
+        int siblingBatchSize = Mathf.CeilToInt((float)_siblingPairsCount / _batchSize);
         int nodeBatchSize = Mathf.CeilToInt((float)ObjectsCount / _batchSize);
 
         TestOrganizerCompute.Dispatch(_siblingPressureKernel, siblingBatchSize, 1, 1);
