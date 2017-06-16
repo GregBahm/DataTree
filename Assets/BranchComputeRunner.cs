@@ -29,7 +29,7 @@ public class BranchComputeRunner : MonoBehaviour
     private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(float) + sizeof(int); // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, Scale
     private ComputeBuffer _fixedDataBuffer;
 
-    private int _variableDataStride = sizeof(float) * 2 + sizeof(float) * 2; // Pos, CurrentSiblingPressure, ChildrenPositionSum
+    private int _variableDataStride = sizeof(float) * 2 + sizeof(float) * 2; // Pos, CurrentSiblingPressure
     private ComputeBuffer _variableDataBuffer;
 
     private int _siblingPairsStride = sizeof(int) + sizeof(int); // SelfIndex, SiblingIndex

@@ -1,0 +1,64 @@
+﻿#pragma kernel ComputeSiblingPressure
+#pragma kernel ApplySiblingPressure
+
+float _DrawPower;
+float _RepelDist;
+float _RepelPower;
+uint _ObjectsCount;
+
+struct SiblingPair
+{
+	float SelfIndex;
+	float SiblingIndex;
+};
+
+StructuredBuffer<SiblingPair> _SiblingPairsBuffer;
+RWStructuredBuffer<float2> _PositionsBuffer;
+RWStructuredBuffer<float2> _SiblingPressureBuffer;
+
+float2 GetSiblingPressure(float2 self, float2 sibling)
+{
+	float2 diff = self - sibling;
+	float dist = length(diff);
+	if (dist == 0)
+	{
+		return 0;
+	}
+	float2 normalized = normalize(diff);
+	float power = max(0, _RepelDist - dist) / _RepelDist;
+	return normalized * power * _RepelPower;
+} 
+
+[numthreads(128, 1, 1)]
+void ComputeSiblingPressureOld(uint3 id : SV_DispatchThreadID)
+{
+	SiblingPair myPair = _SiblingPairsBuffer[id.x];
+	float2 selfPosition = _PositionsBuffer[myPair.SelfIndex];
+	float2 siblingPosition = _PositionsBuffer[myPair.SiblingIndex];
+	float2 newSiblingPressure = GetSiblingPressure(selfPosition, siblingPosition);
+	_SiblingPressureBuffer[myPair.SelfIndex] = InterlockedAdd(_SiblingPressureBuffer[myPair.SelfIndex], newSiblingPressure);
+}
+[numthreads(128, 1, 1)]
+void ComputeSiblingPressure(uint3 id : SV_DispatchThreadID)
+{
+	for (uint i = 0; i < 128; i++)
+	{
+		if (id.x != i)
+		{
+			float2 selfPosition = _PositionsBuffer[id.x];
+			float2 siblingPosition = _PositionsBuffer[i];
+			float2 newSiblingPressure = GetSiblingPressure(selfPosition, siblingPosition);
+			_SiblingPressureBuffer[id.x] += newSiblingPressure;
+		}
+	}
+}
+ 
+[numthreads(128, 1, 1)]
+void ApplySiblingPressure(uint3 id : SV_DispatchThreadID)
+{
+	float2 baseSiblingPressure = _SiblingPressureBuffer[id.x];
+	float2 currentPos = _PositionsBuffer[id.x];
+	float2 newPos = (baseSiblingPressure + currentPos) * _DrawPower;
+	_PositionsBuffer[id.x] = newPos;
+	_SiblingPressureBuffer[id.x] = 0;
+}
