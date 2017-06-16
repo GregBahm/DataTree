@@ -342,6 +342,9 @@ public class Node
     private readonly int _totalChildCount;
     public int TotalChildCount { get { return _totalChildCount; } }
 
+    private readonly int _levelsOfChildren;
+    public int LevelsOfChildren{ get { return _levelsOfChildren; } }
+
     private readonly int _parentCount;
     public int ParentCount { get { return _parentCount; } }
 
@@ -357,6 +360,7 @@ public class Node
         _immediateChildCount = _children.Count();
         _totalChildCount = _children.Sum(child => child.TotalChildCount + 1);
         _parentCount = GetParentCount(parent, 0);
+        _levelsOfChildren = _immediateChildCount > 0 ? _children.Max(child => child.ParentCount - _parentCount) : 0;
     }
 
     private int GetParentCount(Node parent, int count)

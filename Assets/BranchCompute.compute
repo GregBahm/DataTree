@@ -1,18 +1,21 @@
 ﻿#pragma kernel ComputeFinalPositions
 #pragma kernel ComputeSiblingPressure
 
+#define IntDRes 1000
+
 struct FixedBranchData
 {
     int ParentIndex;
     int ImmediateChildenCount;
 	int BranchLevel;
 	float LevelOffset;
+	float BranchParameter;
 	int Scale;
 };
 struct VariableBranchData
 {
     float2 Pos;
-    float2 CurrentSiblingPressure;
+    int2 CurrentSiblingPressure;
 };
 struct SiblingPair
 {
@@ -24,7 +27,7 @@ RWStructuredBuffer<VariableBranchData> _VariableDataBuffer;
 StructuredBuffer<FixedBranchData> _FixedDataBuffer;
 StructuredBuffer<SiblingPair> _SiblingPairsBuffer;
 
-float _DrawPower;
+float _DrawPower; 
 float _RepelDist;
 float _RepelPower;
 
@@ -39,8 +42,9 @@ void ComputeFinalPositions(uint3 id : SV_DispatchThreadID)
 	VariableBranchData variableData = _VariableDataBuffer[id.x];
     FixedBranchData fixedData = _FixedDataBuffer[id.x];
 	VariableBranchData parentData = _VariableDataBuffer[fixedData.ParentIndex];
+
 	float2 newPos = variableData.Pos;
-	newPos += variableData.CurrentSiblingPressure;
+	newPos += (float2)variableData.CurrentSiblingPressure / IntDRes;
 	newPos = DrawToParent(newPos, parentData.Pos);
 
 	variableData.Pos = newPos;
@@ -68,7 +72,11 @@ void ComputeSiblingPressure(uint3 id : SV_DispatchThreadID)
 		float2 selfPosition = selfData.Pos;
 		float2 siblingPosition = siblingData.Pos;
 
-		float2 newSiblingPressure = GetSiblingPressure(selfPosition, siblingPosition);
-		_VariableDataBuffer[myPair.SelfIndex].CurrentSiblingPressure += newSiblingPressure;
+		int2 newSiblingPressure = GetSiblingPressure(selfPosition, siblingPosition) * IntDRes;
+
+		InterlockedAdd(_VariableDataBuffer[myPair.SelfIndex].CurrentSiblingPressure.x, newSiblingPressure.x);
+		InterlockedAdd(_VariableDataBuffer[myPair.SelfIndex].CurrentSiblingPressure.y, newSiblingPressure.y);
+		InterlockedAdd(_VariableDataBuffer[myPair.SiblingIndex].CurrentSiblingPressure.x, -newSiblingPressure.x);
+		InterlockedAdd(_VariableDataBuffer[myPair.SiblingIndex].CurrentSiblingPressure.y, -newSiblingPressure.y);
 	}
 }

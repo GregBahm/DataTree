@@ -18,6 +18,7 @@
 
 			float3 _BranchSmallColor;
 			float3 _BranchLargeColor;
+			float3 _BranchTipColor;
 
 			float _AvatarSize;
 
@@ -25,11 +26,14 @@
 
 			float _BranchThickness;
 			float _BranchThicknessRamp;
-			 
+			float _BranchColorRamp;
+			float _BranchColorOffset;
+
 			struct MeshData
 			{
 				float3 Pos;
 				float2 Uvs;
+				float3 Normal;
 			};
 			struct FixedBranchData
 			{
@@ -37,6 +41,7 @@
 				int ImmediateChildenCount;
 				int BranchLevel;
 				float LevelOffset;
+				float BranchParameter;
 				int Scale;
 			};
 			struct VariableBranchData
@@ -51,13 +56,9 @@
 
 			struct v2f
 			{
-				float4 vertex : SV_POSITION;
-				float3 branchColor : TEXCOORD0;
-				float2 startClipSpace : TEXCOORD1;
-				float2 endClipSpace : TEXCOORD2;
-				float2 clipSpace : TEXCOORD3;
-				float startScale : TEXCOORD4;
-				float endScale : TEXCOORD5;
+				float4 Vertex : SV_POSITION;
+				float3 BranchColor : TEXCOORD0;
+				float3 Normal : NORMAL;
 			};
 
 			float GetBaseScale(int scaleBase)
@@ -92,8 +93,19 @@
 
 			float3 GetThreeDeePos(float2 xzPos, int level, float levelOffset)
 			{
-				float yPos = level * _BranchHeight;// + levelOffset;
+				float yPos = level * _BranchHeight + levelOffset;
 				return float3(xzPos.x, yPos, xzPos.y);
+			}
+
+			float3 GetAdjustedNormal(float3 normal, float3 startPoint, float3 endPoint, float key)
+			{
+				float2 vect = normalize(startPoint.xz - endPoint.xz);
+				float dotty = dot(normal.xz, vect);
+				float core =  pow(1 - (length(key - .5) * 2), 1);
+				float alpha = length(startPoint.xz - endPoint.xz) / (startPoint.y - endPoint.y);
+				float3 newNormal = float3(0, dotty * core * alpha, 0);
+				//return abs(alpha);
+				return normal - newNormal;
 			}
 
 			v2f vert(uint meshId : SV_VertexID, uint instanceId : SV_InstanceID)
@@ -116,26 +128,22 @@
 				float3 meshVert = meshData.Pos * scaler;
 				float4 newPos = float4(meshVert + rootPos, 1);
 				float colorKey = lerp(startScale, endScale, vertKey);
+				colorKey = pow(colorKey, _BranchColorRamp) - _BranchColorOffset;
 				 
-				o.vertex = UnityObjectToClipPos(newPos);
-
-				o.branchColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey);
-				float2 screenRatio = float2(_ScreenParams.x / _ScreenParams.y, 1);
-				o.startClipSpace = UnityObjectToClipPos(startPoint).xy * screenRatio;
-				o.endClipSpace = UnityObjectToClipPos(endPoint).xy * screenRatio;
-				o.clipSpace = UnityObjectToClipPos(newPos).xy * screenRatio;
-				o.startScale = startScale;
-				o.endScale = endScale;
+				o.Vertex = UnityObjectToClipPos(newPos);
+				o.Normal = GetAdjustedNormal(meshData.Normal, startPoint, endPoint, vertKey);
+				float branchParam = lerp(fixedStartData.BranchParameter, fixedEndData.BranchParameter, vertKey);
+				branchParam = pow(branchParam, 10);
+				float3 branchColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey);
+				o.BranchColor = lerp(branchColor, _BranchTipColor, branchParam);
 				return o;
 			}
 			
-			fixed4 frag (v2f i) : SV_Target
+			fixed4 frag (v2f i) : SV_Target 
 			{
-				float startClip = length(i.startClipSpace - i.clipSpace) * _AvatarSize - i.startScale;
-				float endClip = length(i.endClipSpace - i.clipSpace) * _AvatarSize - i.endScale;
-				float finalClip = min(startClip, endClip);
-				clip(finalClip);
-				return float4(i.branchColor, 1);
+				//return float4(pow(i.BranchColor, 2), 1);
+				float shade = dot(normalize(i.Normal), float3(0,.7,.7)) / 2 + .5;
+				return float4(i.BranchColor + i.BranchColor * shade, 1);
 			}
 			ENDCG
 		}

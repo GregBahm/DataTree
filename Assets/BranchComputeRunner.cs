@@ -8,10 +8,13 @@ public class BranchComputeRunner : MonoBehaviour
 {
     public Color BranchSmallColor;
     public Color BranchLargeColor;
+    public Color BranchTipColor;
     public float AvatarSize;
     public float BranchHeight;
     public float BranchThickness;
     public float BranchThicknessRamp;
+    public float BranchColorRamp;
+    public float BranchColorOffset;
     [Range(0, 1)]
     public float DrawPower;
     public float RepelDistance;
@@ -23,13 +26,13 @@ public class BranchComputeRunner : MonoBehaviour
     
     public Mesh BranchMesh;
 
-    private int _meshBufferStride = sizeof(float) * 3 + sizeof(float) * 2; // POS, UVs
+    private int _meshBufferStride = sizeof(float) * 3 + sizeof(float) * 2 + sizeof(float) * 3; // Pos, Uvs, Normals
     private ComputeBuffer _meshBuffer;
 
-    private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(float) + sizeof(int); // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, Scale
+    private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(float) + + sizeof(float) + sizeof(int); // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, BranchParameter, Scale
     private ComputeBuffer _fixedDataBuffer;
 
-    private int _variableDataStride = sizeof(float) * 2 + sizeof(float) * 2; // Pos, CurrentSiblingPressure
+    private int _variableDataStride = sizeof(float) * 2 + sizeof(int) * 2; // Pos, CurrentSiblingPressure
     private ComputeBuffer _variableDataBuffer;
 
     private int _siblingPairsStride = sizeof(int) + sizeof(int); // SelfIndex, SiblingIndex
@@ -48,6 +51,7 @@ public class BranchComputeRunner : MonoBehaviour
     {
         public Vector3 Pos;
         public Vector2 Uvs;
+        public Vector3 Normal;
     }
     struct FixedBranchData
     {
@@ -55,6 +59,7 @@ public class BranchComputeRunner : MonoBehaviour
         public int ImmediateChildenCount;
         public int BranchLevel;
         public float LevelOffset;
+        public float BranchParameter;
         public int Scale;
     }
     struct VariableBranchData
@@ -142,9 +147,6 @@ public class BranchComputeRunner : MonoBehaviour
             BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_SiblingPairsBuffer", _siblingPairsBuffers[i]);
             BranchCompute.Dispatch(_computeSiblingPressureKernel, _siblingBatchSizes[i], 1, 1);
         }
-
-        //BranchCompute.SetBuffer(_computeSiblingPressureKernel, "_SiblingPairsBuffer", _siblingPairsBuffers[0]);
-        //BranchCompute.Dispatch(_computeSiblingPressureKernel, _siblingBatchSizes[0], 1, 1);
     }
 
     private void DispatchFinalPositioner()
@@ -157,8 +159,8 @@ public class BranchComputeRunner : MonoBehaviour
 
     private void Update()
     {
-        DispatchFinalPositioner();
         DispatchSiblingPressure();
+        DispatchFinalPositioner();
     } 
 
     private SiblingsSetupData GetSibblingSetup(Node[] nodes, Dictionary<Node, int> lookupTable)
@@ -191,14 +193,11 @@ public class BranchComputeRunner : MonoBehaviour
         
         for (int i = 0; i < siblingsOfLayer.Length; i++)
         {
-            for (int j = 0; j < siblingsOfLayer.Length; j++)
+            for (int j = 0; j < i; j++)
             {
-                if(i != j)
-                {
-                    int selfIndex = lookupTable[siblingsOfLayer[i]];
-                    int siblingIndex = lookupTable[siblingsOfLayer[j]];
-                    data.Add(new SiblingPair() { SelfIndex = selfIndex, SiblingIndex = siblingIndex });
-                }
+                int selfIndex = lookupTable[siblingsOfLayer[i]];
+                int siblingIndex = lookupTable[siblingsOfLayer[j]];
+                data.Add(new SiblingPair() { SelfIndex = selfIndex, SiblingIndex = siblingIndex });
             }
         }
 
@@ -214,7 +213,8 @@ public class BranchComputeRunner : MonoBehaviour
             ImmediateChildenCount = node.ImmediateChildCount,
             LevelOffset = UnityEngine.Random.value + .5f,
             Scale = node.TotalChildCount + 1,
-            ParentIndex = node.Parent == null ? 0 : lookupTable[node.Parent]
+            ParentIndex = node.Parent == null ? 0 : lookupTable[node.Parent],
+            BranchParameter = (float)node.ParentCount / (node.ParentCount + node.LevelsOfChildren)
         };
         return ret;
     }
@@ -271,6 +271,7 @@ public class BranchComputeRunner : MonoBehaviour
         {
             meshVerts[i].Pos = mesh.vertices[mesh.triangles[_meshvertCount - i - 1]];
             meshVerts[i].Uvs = mesh.uv[mesh.triangles[_meshvertCount - i - 1]];
+            meshVerts[i].Normal = mesh.normals[mesh.triangles[_meshvertCount - i - 1]];
         }
         ret.SetData(meshVerts);
         return ret;
@@ -284,6 +285,9 @@ public class BranchComputeRunner : MonoBehaviour
         BranchMat.SetFloat("_BranchThicknessRamp", BranchThicknessRamp);
         BranchMat.SetColor("_BranchSmallColor", BranchSmallColor);
         BranchMat.SetColor("_BranchLargeColor", BranchLargeColor);
+        BranchMat.SetColor("_BranchTipColor", BranchTipColor);
+        BranchMat.SetFloat("_BranchColorRamp", BranchColorRamp);
+        BranchMat.SetFloat("_BranchColorOffset", BranchColorOffset); 
 
         BranchMat.SetBuffer("_MeshBuffer", _meshBuffer);
         BranchMat.SetBuffer("_FixedDataBuffer", _fixedDataBuffer);
