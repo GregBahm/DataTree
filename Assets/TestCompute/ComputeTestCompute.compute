@@ -14,7 +14,7 @@ struct SiblingPair
 
 StructuredBuffer<SiblingPair> _SiblingPairsBuffer;
 RWStructuredBuffer<float2> _PositionsBuffer;
-RWStructuredBuffer<float2> _SiblingPressureBuffer;
+RWStructuredBuffer<int2> _SiblingPressureBuffer;
 
 float2 GetSiblingPressure(float2 self, float2 sibling)
 {
@@ -30,33 +30,20 @@ float2 GetSiblingPressure(float2 self, float2 sibling)
 } 
 
 [numthreads(128, 1, 1)]
-void ComputeSiblingPressureOld(uint3 id : SV_DispatchThreadID)
+void ComputeSiblingPressure(uint3 id : SV_DispatchThreadID)
 {
 	SiblingPair myPair = _SiblingPairsBuffer[id.x];
 	float2 selfPosition = _PositionsBuffer[myPair.SelfIndex];
 	float2 siblingPosition = _PositionsBuffer[myPair.SiblingIndex];
-	float2 newSiblingPressure = GetSiblingPressure(selfPosition, siblingPosition);
-	_SiblingPressureBuffer[myPair.SelfIndex] = InterlockedAdd(_SiblingPressureBuffer[myPair.SelfIndex], newSiblingPressure);
-}
-[numthreads(128, 1, 1)]
-void ComputeSiblingPressure(uint3 id : SV_DispatchThreadID)
-{
-	for (uint i = 0; i < 128; i++)
-	{
-		if (id.x != i)
-		{
-			float2 selfPosition = _PositionsBuffer[id.x];
-			float2 siblingPosition = _PositionsBuffer[i];
-			float2 newSiblingPressure = GetSiblingPressure(selfPosition, siblingPosition);
-			_SiblingPressureBuffer[id.x] += newSiblingPressure;
-		}
-	}
+	int2 newSiblingPressure = GetSiblingPressure(selfPosition, siblingPosition) * 10000;
+	InterlockedAdd(_SiblingPressureBuffer[myPair.SelfIndex].x, newSiblingPressure.x);
+	InterlockedAdd(_SiblingPressureBuffer[myPair.SelfIndex].y, newSiblingPressure.y);
 }
  
 [numthreads(128, 1, 1)]
 void ApplySiblingPressure(uint3 id : SV_DispatchThreadID)
 {
-	float2 baseSiblingPressure = _SiblingPressureBuffer[id.x];
+	float2 baseSiblingPressure = (float2)_SiblingPressureBuffer[id.x] / 10000;
 	float2 currentPos = _PositionsBuffer[id.x];
 	float2 newPos = (baseSiblingPressure + currentPos) * _DrawPower;
 	_PositionsBuffer[id.x] = newPos;

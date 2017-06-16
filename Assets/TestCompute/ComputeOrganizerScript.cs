@@ -31,7 +31,7 @@ public class ComputeOrganizerScript : MonoBehaviour
     private const int _positionStride = sizeof(float) * 2;
     private ComputeBuffer _positionBuffer;
 
-    private const int _siblingPressureStride = sizeof(float) * 2;
+    private const int _siblingPressureStride = sizeof(int) * 2;
     private ComputeBuffer _siblingPressureBuffer;
 
     private const int _batchSize = 1;
@@ -106,9 +106,10 @@ public class ComputeOrganizerScript : MonoBehaviour
         TestOrganizerCompute.SetBuffer(_siblingPressureKernel, "_SiblingPairsBuffer", _siblingPairsBuffers);
         TestOrganizerCompute.SetBuffer(_siblingPressureKernel, "_SiblingPressureBuffer", _siblingPressureBuffer);
 
+        int siblingBatchSize = Mathf.CeilToInt((float)(ObjectsCount * ObjectsCount - ObjectsCount) / _batchSize);
         int nodeBatchSize = Mathf.CeilToInt((float)ObjectsCount / _batchSize);
 
-        TestOrganizerCompute.Dispatch(_siblingPressureKernel, nodeBatchSize, 1, 1);
+        TestOrganizerCompute.Dispatch(_siblingPressureKernel, siblingBatchSize, 1, 1);
 
         TestOrganizerCompute.SetBuffer(_applyPressureKernel, "_PositionsBuffer", _positionBuffer);
         TestOrganizerCompute.SetBuffer(_applyPressureKernel, "_SiblingPressureBuffer", _siblingPressureBuffer);
