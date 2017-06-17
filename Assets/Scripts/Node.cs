@@ -5,9 +5,6 @@ using System.Text;
 
 public class Node
 {
-    private readonly int _index;
-    public int Index { get { return _index; } }
-
     private readonly Node _parent;
     public Node Parent { get { return _parent; } }
 
@@ -38,15 +35,14 @@ public class Node
     private readonly int _parentCount;
     public int ParentCount { get { return _parentCount; } }
 
-    internal Node(Node parent, string name, string accountUrl, string avatarUrl, IEnumerable<NodeBuilder> children, int index, int maxIndex)
+    internal Node(Node parent, string name, string accountUrl, string avatarUrl, IEnumerable<NodeBuilder> children)
     {
         _parent = parent;
         _name = name;
         _accountUrl = accountUrl;
         _avatarUrl = avatarUrl;
         _subUrl = accountUrl.Replace("http://", "").Replace(".tumblr.com/", "");
-        _index = maxIndex - index;
-        _children = children.Select(item => item.ToNode(this, maxIndex)).ToArray();
+        _children = children.Select(item => item.ToNode(this)).ToArray();
         _immediateChildCount = _children.Count();
         _totalChildCount = _children.Sum(child => child.TotalChildCount + 1);
         _parentCount = GetParentCount(parent, 0);

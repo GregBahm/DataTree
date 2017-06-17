@@ -4,21 +4,21 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using UnityEngine;
 
 class DataProcessor
 {
     private readonly string RawDataFolder;
+    private readonly string RootAccountUrl;
 
-    private int _index;
-
-    public DataProcessor(string rawDataFolder)
+    public DataProcessor(string rawDataFolder, string rootAccountUrl)
     {
         RawDataFolder = rawDataFolder;
+        RootAccountUrl = rootAccountUrl;
     }
 
     public Node ProcessData()
     {
-        _index = 0;
         List<ReblogDatum> reblogs = new List<ReblogDatum>();
 
         string[] filePaths = Directory.GetFiles(RawDataFolder);
@@ -27,100 +27,55 @@ class DataProcessor
             string data = File.ReadAllText(filePath);
             reblogs.AddRange(ProcessData(data));
         }
-
         return ProcessBuilders(reblogs);
     }
 
     private Node ProcessBuilders(IEnumerable<ReblogDatum> reblogData)
     {
-        IEnumerable<NodeBuilder> builders = GetBaseBuilders(reblogData);
-        PatchBrokeConnections(builders);
-        CullCircularDependencies(builders);
-        NodeBuilder rootBuilder = builders.First(item => item.RawIndex == 0).Parent;
-        Node ret = rootBuilder.ToNode(null, _index);
+        IEnumerable<NodeBuilder> builders = GetBaseBuilders(reblogData).ToList();
+        List<NodeBuilder> ahWhat = builders.Where(item => item.Parent == null).ToList();
+        if(builders.Count(item => item.Parent == null) != 1)
+        {
+            throw new Exception("Data loader is not working right.");
+        }
+        NodeBuilder rootBuilder = builders.First(item => item.Parent == null);
+        Node ret = rootBuilder.ToNode(null);
         return ret;
-    }
-
-    private void PatchBrokeConnections(IEnumerable<NodeBuilder> builders)
-    {
-        // So the logic for patching broken connections up is:
-        // Is their parent null? If yes, find the item with the index one higher than their own. Make that their parent.
-
-        NodeBuilder[] sortedBuilders = new NodeBuilder[_index];
-        foreach (NodeBuilder builder in builders.Where(item => item.Parent != null))
-        {
-            sortedBuilders[builder.RawIndex] = builder;
-        }
-        foreach (NodeBuilder builder in builders.Where(item => item.Parent == null))
-        {
-            for (int i = builder.RawIndex; i > 0; i--)
-            {
-                if (sortedBuilders[i] != null)
-                {
-                    builder.Parent = sortedBuilders[i];
-                    break;
-                }
-            }
-        }
     }
 
     private IEnumerable<NodeBuilder> GetBaseBuilders(IEnumerable<ReblogDatum> reblogData)
     {
         Dictionary<string, NodeBuilder> builderDictionary = new Dictionary<string, NodeBuilder>();
+        NodeBuilder mostRecentNode = new NodeBuilder(RootAccountUrl, RootAccountUrl, null);
+        builderDictionary.Add(RootAccountUrl, mostRecentNode);
         foreach (ReblogDatum item in reblogData)
         {
-            if (!builderDictionary.ContainsKey(item.Parent.Key))
+            NodeBuilder parentBuilder;
+            if (builderDictionary.ContainsKey(item.Parent.Key))
             {
-                NodeBuilder parent = new NodeBuilder(item.Parent.Key, item.Parent.AccountUrl, item.Parent.AvatarUrl);
-                parent.RawIndex = item.RawIndex;
-                builderDictionary.Add(item.Parent.Key, parent);
+                parentBuilder = builderDictionary[item.Parent.Key];
             }
+            else
+            {
+                //Need to add an alias in the dictionary.
+                //builderDictionary.Add(item.Parent.Key, mostRecentNode);
+                parentBuilder = mostRecentNode;
+            }
+            NodeBuilder baseBuilder;
             if (!builderDictionary.ContainsKey(item.Key))
             {
-                NodeBuilder builder = new NodeBuilder(item.Name, item.AccountUrl, item.AvatarUrl);
-                builderDictionary.Add(item.Key, builder);
+                baseBuilder = new NodeBuilder(item.Name, item.AccountUrl, item.AvatarUrl);
+                builderDictionary.Add(item.Key, baseBuilder);
             }
-            NodeBuilder baseBuilder = builderDictionary[item.Key];
-            NodeBuilder parentBuilder = builderDictionary[item.Parent.Key];
-            baseBuilder.AvatarUrl = item.AvatarUrl; // Builders built from reblog parents don't have avatar urls
+            else
+            {
+                baseBuilder = builderDictionary[item.Key];
+            }
+            
             baseBuilder.Parent = parentBuilder;
-            baseBuilder.RawIndex = Math.Min(baseBuilder.RawIndex, item.RawIndex); // Parent builders aren't built with a real index, so go with the higher index
+            mostRecentNode = baseBuilder;
         }
-        return builderDictionary.Values;
-    }
-
-    private void CullCircularDependencies(IEnumerable<NodeBuilder> nodes)
-    {
-        foreach (NodeBuilder item in nodes)
-        {
-            HashSet<NodeBuilder> parentChain = new HashSet<NodeBuilder>();
-            NodeBuilder parent = item.Parent;
-            while (parent != null)
-            {
-                if (parentChain.Contains(parent))
-                {
-                    item.Parent = GetMaxParent(parentChain); //TODO: validate this logic
-                    break;
-                }
-                parentChain.Add(parent);
-                parent = parent.Parent;
-            }
-        }
-    }
-
-    private NodeBuilder GetMaxParent(IEnumerable<NodeBuilder> parentChain)
-    {
-        int highestIndex = 0;
-        NodeBuilder ret = null;
-        foreach (NodeBuilder item in parentChain)
-        {
-            if (item.RawIndex > highestIndex)
-            {
-                highestIndex = item.RawIndex;
-                ret = item;
-            }
-        }
-        return ret;
+        return new HashSet<NodeBuilder>(builderDictionary.Values);
     }
 
     private IEnumerable<ReblogDatum> ProcessData(string data)
@@ -138,7 +93,6 @@ class DataProcessor
             else if (term == "reblog")
             {
                 reblogs.Add(BuilderFromReblog(datum));
-                _index++;
             }
             else
             {
@@ -165,6 +119,6 @@ class DataProcessor
         string parentUrl = parentLine.Split('\"')[0];
         string parentName = parentLine.Split('>')[1].Split('<')[0];
 
-        return new ReblogDatum(name, url, avatarUrl, parentName, parentUrl, _index);
+        return new ReblogDatum(name, url, avatarUrl, parentName, parentUrl);
     }
 }

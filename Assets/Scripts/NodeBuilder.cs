@@ -43,8 +43,8 @@ internal class NodeBuilder : DatumBase
         return AccountUrl + " + " + _children.Count + " children";
     }
 
-    public Node ToNode(Node parent, int maxIndex)
+    public Node ToNode(Node parent)
     {
-        return new Node(parent, Name, AccountUrl, AvatarUrl, Children, RawIndex, maxIndex);
+        return new Node(parent, Name, AccountUrl, AvatarUrl, Children);
     }
 }
