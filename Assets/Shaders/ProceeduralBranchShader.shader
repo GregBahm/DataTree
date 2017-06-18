@@ -105,8 +105,33 @@
 				float core =  pow(1 - (length(key - .5) * 2), 1);
 				float alpha = length(startPoint.xz - endPoint.xz) / (startPoint.y - endPoint.y);
 				float3 newNormal = float3(0, dotty * core * alpha, 0);
-				//return abs(alpha);
 				return normal - newNormal;
+			}
+
+			float3 RotatePointAroundAxis(float3 pos, float3 axis, float angle)
+			{
+				axis = normalize(axis);
+				float s = sin(angle);
+				float c = cos(angle);
+				float oc = 1.0 - c;
+
+				float4x4 rotationMatrix = float4x4(
+					oc * axis.x * axis.x + c, oc * axis.x * axis.y - axis.z * s, oc * axis.z * axis.x + axis.y * s, 0.0,
+					oc * axis.x * axis.y + axis.z * s, oc * axis.y * axis.y + c, oc * axis.y * axis.z - axis.x * s, 0.0,
+					oc * axis.z * axis.x - axis.y * s, oc * axis.y * axis.z + axis.x * s, oc * axis.z * axis.z + c, 0.0,
+					0.0, 0.0, 0.0, 1.0);
+
+				float3 rotated = mul(rotationMatrix, pos);
+				return rotated;
+			}
+
+			float3 GetRotatedVert(float3 baseMeshPoint, float key, float3 startPoint, float3 endPoint)
+			{
+				float3 axis = cross(float3(0, 1, 0), (startPoint - endPoint));
+				float angle = 1 - (abs(Ease(key) - .5) * 2);
+				angle *= 3.141 * .25;
+				float3 basePoint = float3(baseMeshPoint.x, 0, baseMeshPoint.z);
+				return RotatePointAroundAxis(basePoint, axis, angle);
 			}
 
 			v2f vert(uint meshId : SV_VertexID, uint instanceId : SV_InstanceID)
@@ -123,10 +148,13 @@
 				float startScale = GetBaseScale(fixedStartData.Scale);
 				float endScale = GetBaseScale(fixedEndData.Scale);
 
+
+
 				float vertKey = meshData.Uvs.y;
 				float3 rootPos = GetRootPos(startPoint, endPoint, vertKey);
 				float3 scaler = GetScaler(startScale, endScale, vertKey);
 				float3 meshVert = meshData.Pos * scaler;
+				meshVert = GetRotatedVert(meshVert, vertKey, startPoint, endPoint);
 				float4 newPos = float4(meshVert + rootPos, 1);
 				float colorKey = lerp(startScale, endScale, vertKey);
 				colorKey = pow(colorKey, _BranchColorRamp) - _BranchColorOffset;
