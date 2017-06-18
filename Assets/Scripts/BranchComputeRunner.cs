@@ -87,7 +87,7 @@ public class BranchComputeRunner : MonoBehaviour
 
     void Start()
     {
-        string rawDataFolder = @"D:\DataTree\SamplePostData\Raw\";
+        string rawDataFolder = @"C:\Users\Lisa\Source\Repos\DataTree\SamplePostData\Raw\";
         DataProcessor processor = new DataProcessor(rawDataFolder, @"http://concretization.tumblr.com/");
         Node rootNode = processor.ProcessData();
         

@@ -57,7 +57,8 @@
 			struct v2f
 			{
 				float4 Vertex : SV_POSITION;
-				float3 BranchColor : TEXCOORD0;
+				float3 BranchBaseColor : TEXCOORD0;
+				float3 BranchLightColor : TEXCOORD1;
 				float3 Normal : NORMAL;
 			};
 
@@ -133,17 +134,15 @@
 				o.Vertex = UnityObjectToClipPos(newPos);
 				o.Normal = GetAdjustedNormal(meshData.Normal, startPoint, endPoint, vertKey);
 				float branchParam = lerp(fixedStartData.BranchParameter, fixedEndData.BranchParameter, vertKey);
-				branchParam = pow(branchParam, 10);
-				float3 branchColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey);
-				o.BranchColor = lerp(branchColor, _BranchTipColor, branchParam);
+				o.BranchLightColor = _BranchTipColor * pow(branchParam, 4);
+				o.BranchBaseColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey);
 				return o;
 			}
 			
 			fixed4 frag (v2f i) : SV_Target 
 			{
-				//return float4(pow(i.BranchColor, 2), 1);
 				float shade = dot(normalize(i.Normal), float3(0,.7,.7)) / 2 + .5;
-				return float4(i.BranchColor + i.BranchColor * shade, 1);
+				return float4(i.BranchBaseColor + i.BranchLightColor * shade, 1);
 			}
 			ENDCG
 		}

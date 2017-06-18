@@ -24,32 +24,38 @@ class DataProcessor
         string[] filePaths = Directory.GetFiles(RawDataFolder);
         foreach (string filePath in filePaths)
         {
-            string data = File.ReadAllText(filePath);
-            reblogs.AddRange(ProcessData(data));
+            string fileData = File.ReadAllText(filePath);
+            List<ReblogDatum> dataFromFile = ProcessDataFromFile(fileData).ToList();
+            dataFromFile.Reverse(); // Order matters for the processor
+            reblogs.AddRange(dataFromFile);
         }
         return ProcessBuilders(reblogs);
     }
 
     private Node ProcessBuilders(IEnumerable<ReblogDatum> reblogData)
     {
-        IEnumerable<NodeBuilder> builders = GetBaseBuilders(reblogData).ToList();
+        NodeBuilder rootBuilder = new NodeBuilder(RootAccountUrl, RootAccountUrl, null);
+        IEnumerable<NodeBuilder> builders = GetBaseBuilders(rootBuilder, reblogData).ToList();
         List<NodeBuilder> ahWhat = builders.Where(item => item.Parent == null).ToList();
         if(builders.Count(item => item.Parent == null) != 1)
         {
             throw new Exception("Data loader is not working right.");
         }
-        NodeBuilder rootBuilder = builders.First(item => item.Parent == null);
         Node ret = rootBuilder.ToNode(null);
         return ret;
     }
 
-    private IEnumerable<NodeBuilder> GetBaseBuilders(IEnumerable<ReblogDatum> reblogData)
+    private IEnumerable<NodeBuilder> GetBaseBuilders(NodeBuilder root, IEnumerable<ReblogDatum> reblogData)
     {
         Dictionary<string, NodeBuilder> builderDictionary = new Dictionary<string, NodeBuilder>();
-        NodeBuilder mostRecentNode = new NodeBuilder(RootAccountUrl, RootAccountUrl, null);
-        builderDictionary.Add(RootAccountUrl, mostRecentNode);
+        NodeBuilder mostRecentNode = root;
+        builderDictionary.Add(RootAccountUrl, root);
         foreach (ReblogDatum item in reblogData)
         {
+            if(item.Parent.Key == RootAccountUrl)
+            {
+                Debug.Log("hit");
+            }
             NodeBuilder parentBuilder;
             if (builderDictionary.ContainsKey(item.Parent.Key))
             {
@@ -58,7 +64,7 @@ class DataProcessor
             else
             {
                 //Need to add an alias in the dictionary.
-                //builderDictionary.Add(item.Parent.Key, mostRecentNode);
+                builderDictionary.Add(item.Parent.Key, mostRecentNode);
                 parentBuilder = mostRecentNode;
             }
             NodeBuilder baseBuilder;
@@ -78,10 +84,10 @@ class DataProcessor
         return new HashSet<NodeBuilder>(builderDictionary.Values);
     }
 
-    private IEnumerable<ReblogDatum> ProcessData(string data)
+    private IEnumerable<ReblogDatum> ProcessDataFromFile(string fileData)
     {
         List<ReblogDatum> reblogs = new List<ReblogDatum>();
-        string[] split = data.Split(new[] { "<li class=\"note" }, StringSplitOptions.RemoveEmptyEntries);
+        string[] split = fileData.Split(new[] { "<li class=\"note" }, StringSplitOptions.RemoveEmptyEntries);
         for (int i = 1; i < split.Length - 2; i++) //Toss the first and last two entries (which are always the "posted this" and "show more notes" entries
         {
             string datum = split[i];
