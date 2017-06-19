@@ -2,8 +2,8 @@
 {
 	Properties
 	{
-		_MainTex("Texture", 2D) = "white" {}
-		_OutputTex("Texture", 2D) = "white" {}
+		_MainTex("Texture", 2D) = "black" {}
+		_OutputTex("Texture", 2D) = "black" {}
 	}
 	SubShader
 	{
@@ -35,7 +35,7 @@
 
 			float _XOffset;
 			float _YOffset;
-			#define TextureScale (float)1 / 16
+			#define TextureScale (32 / 16)
 			
 			v2f vert (appdata v)
 			{
@@ -44,13 +44,15 @@
 				o.uv = v.uv;
 				return o;
 			}
-			
+			 
 			fixed4 frag (v2f i) : SV_Target
 			{
 				fixed4 col = tex2D(_OutputTex, i.uv);
 				float2 avatarCoords = i.uv * TextureScale + float2(_XOffset, _YOffset);
-				fixed4 avatar = tex2D(_MainTex, i.uv);
-				return col + avatar;
+				float2 uvs = i.uv * TextureScale - float2(_XOffset, _YOffset);
+				float pixelPasses = uvs.x < 1 && uvs.y < 1 && uvs.x > 0 && uvs.y > 0;
+				fixed4 avatar = tex2D(_MainTex, uvs) * pixelPasses;
+				return avatar + col;
 			}
 			ENDCG
 		}

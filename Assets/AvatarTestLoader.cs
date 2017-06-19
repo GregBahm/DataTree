@@ -17,16 +17,20 @@ public class AvatarTestLoader : MonoBehaviour
 
         int neededResolution = Mathf.CeilToInt(Mathf.Sqrt(avatars.Length) * 16);
         int imageResolution = Mathf.NextPowerOfTwo(neededResolution);
-        Output = new RenderTexture(imageResolution, imageResolution, 0);
-        Output.filterMode = FilterMode.Point;
-        Output.wrapMode = TextureWrapMode.Clamp;
-        Output.enableRandomWrite = true;
+        Output = new RenderTexture(imageResolution, imageResolution, 0)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+            enableRandomWrite = true
+        };
         Output.Create();
 
-        OutputHolder = new RenderTexture(imageResolution, imageResolution, 0);
-        OutputHolder.filterMode = FilterMode.Point;
-        OutputHolder.wrapMode = TextureWrapMode.Clamp;
-        OutputHolder.enableRandomWrite = true;
+        OutputHolder = new RenderTexture(imageResolution, imageResolution, 0)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+            enableRandomWrite = true
+        };
         OutputHolder.Create();
 
         Texture2D avatarTexture = new Texture2D(16, 16);
