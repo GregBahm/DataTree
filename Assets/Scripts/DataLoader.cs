@@ -8,20 +8,32 @@ using UnityEngine;
 
 class DataProcessor
 {
-    private readonly string RawDataFolder;
-    private readonly string RootAccountUrl;
+    private readonly string _rawDataFolder;
+    public string RawDataFolder { get { return _rawDataFolder; } }
+    private readonly string _avatarFolder;
+    public string AvatarFolder { get { return _avatarFolder; } }
+    private readonly string _rootAccountUrl;
+    public string RootAccountUrl { get { return _rootAccountUrl; } }
 
-    public DataProcessor(string rawDataFolder, string rootAccountUrl)
+    public DataProcessor(string dataFolder, string rootAccountUrl)
     {
-        RawDataFolder = rawDataFolder;
-        RootAccountUrl = rootAccountUrl;
+        _rawDataFolder = Path.Combine(dataFolder, "Raw");
+        _avatarFolder = Path.Combine(dataFolder, "Avatars");
+        _rootAccountUrl = rootAccountUrl;
+    }
+
+    public static DataProcessor GetTestProcessor()
+    {
+        string projectFolder = Path.GetFullPath(Path.Combine(Application.dataPath, @"..\"));
+        string dataFolder = Path.Combine(projectFolder, "SamplePostData");
+        return new DataProcessor(dataFolder, @"http://concretization.tumblr.com/");
     }
 
     public Node ProcessData()
     {
         List<ReblogDatum> reblogs = new List<ReblogDatum>();
 
-        string[] filePaths = Directory.GetFiles(RawDataFolder);
+        string[] filePaths = Directory.GetFiles(_rawDataFolder);
         foreach (string filePath in filePaths)
         {
             string fileData = File.ReadAllText(filePath);
@@ -34,9 +46,8 @@ class DataProcessor
 
     private Node ProcessBuilders(IEnumerable<ReblogDatum> reblogData)
     {
-        NodeBuilder rootBuilder = new NodeBuilder(RootAccountUrl, RootAccountUrl, null);
+        NodeBuilder rootBuilder = new NodeBuilder(_rootAccountUrl, _rootAccountUrl, null);
         IEnumerable<NodeBuilder> builders = GetBaseBuilders(rootBuilder, reblogData).ToList();
-        List<NodeBuilder> ahWhat = builders.Where(item => item.Parent == null).ToList();
         if(builders.Count(item => item.Parent == null) != 1)
         {
             throw new Exception("Data loader is not working right.");
@@ -49,13 +60,9 @@ class DataProcessor
     {
         Dictionary<string, NodeBuilder> builderDictionary = new Dictionary<string, NodeBuilder>();
         NodeBuilder mostRecentNode = root;
-        builderDictionary.Add(RootAccountUrl, root);
+        builderDictionary.Add(_rootAccountUrl, root);
         foreach (ReblogDatum item in reblogData)
         {
-            if(item.Parent.Key == RootAccountUrl)
-            {
-                Debug.Log("hit");
-            }
             NodeBuilder parentBuilder;
             if (builderDictionary.ContainsKey(item.Parent.Key))
             {

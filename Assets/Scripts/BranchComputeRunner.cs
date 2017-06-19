@@ -87,8 +87,8 @@ public class BranchComputeRunner : MonoBehaviour
 
     void Start()
     {
-        string rawDataFolder = @"C:\Users\Lisa\Source\Repos\DataTree\SamplePostData\Raw\";
-        DataProcessor processor = new DataProcessor(rawDataFolder, @"http://concretization.tumblr.com/");
+
+        DataProcessor processor = DataProcessor.GetTestProcessor();
         Node rootNode = processor.ProcessData();
         
         _computeFinalPositionsKernel = BranchCompute.FindKernel("ComputeFinalPositions");
