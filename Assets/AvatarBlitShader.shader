@@ -35,7 +35,7 @@
 
 			float _XOffset;
 			float _YOffset;
-			#define TextureScale (32 / 16)
+			#define TextureScale (1024 / 16) // TODO: Softcode the texture resolution
 			
 			v2f vert (appdata v)
 			{
@@ -49,7 +49,7 @@
 			{
 				fixed4 col = tex2D(_OutputTex, i.uv);
 				float2 avatarCoords = i.uv * TextureScale + float2(_XOffset, _YOffset);
-				float2 uvs = i.uv * TextureScale - float2(_XOffset, _YOffset);
+				float2 uvs = (i.uv - float2(_XOffset, _YOffset)) * TextureScale;
 				float pixelPasses = uvs.x < 1 && uvs.y < 1 && uvs.x > 0 && uvs.y > 0;
 				fixed4 avatar = tex2D(_MainTex, uvs) * pixelPasses;
 				return avatar + col;

@@ -33,32 +33,32 @@ public class AvatarTestLoader : MonoBehaviour
         };
         OutputHolder.Create();
 
+        int avatarResolution = neededResolution / 16;
         Texture2D avatarTexture = new Texture2D(16, 16);
         byte[] pngData;
-        for (int i = 0; i < neededResolution; i++)
+        for (int i = 0; i < avatarResolution; i++)
         {
-            for (int j = 0; j < neededResolution; j++)
+            for (int j = 0; j < avatarResolution; j++)
             {
-                int xOffset = i * 16;
-                int yOffset = j * 16;
-                int avatarIndex = i * neededResolution + j;
+                int avatarIndex = i * avatarResolution + j;
                 if(avatarIndex > avatars.Length - 1)
                 {
+                    Debug.Log("Skipping " + avatarIndex);
                     break;
                 }
                 pngData = File.ReadAllBytes(avatars[avatarIndex]);
                 avatarTexture.LoadImage(pngData);
 
-                float xOffsetForShader = (float)xOffset / neededResolution;
-                float yOffsetForShader = (float)yOffset / neededResolution;
+                float xOffsetForShader = (float)i / avatarResolution;
+                float yOffsetForShader = (float)j / avatarResolution;
                 BlitMaterial.SetFloat("_XOffset", xOffsetForShader);
                 BlitMaterial.SetFloat("_YOffset", yOffsetForShader);
-                BlitMaterial.SetTexture("_OutputTex", OutputHolder);
-                Graphics.Blit(avatarTexture, Output, BlitMaterial, 0);
-                Graphics.Blit(Output, OutputHolder);
+                BlitMaterial.SetTexture("_OutputTex", Output);
+                Graphics.Blit(avatarTexture, OutputHolder, BlitMaterial, 0);
+                Graphics.Blit(OutputHolder, Output);
             }
         }
 
-        OutputMaterial.SetTexture("_MainTex", Output);
+        OutputMaterial.SetTexture("_MainTex", OutputHolder);
     }
 }
