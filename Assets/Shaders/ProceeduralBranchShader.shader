@@ -7,7 +7,6 @@
 	{
 		Tags { "RenderType" = "Opaque" }
 		LOD 100
-
 		Pass
 		{
 			CGPROGRAM
@@ -34,6 +33,7 @@
 				float3 Pos;
 				float2 Uvs;
 				float3 Normal;
+				float3 Color;
 			};
 			struct FixedBranchData
 			{
@@ -94,7 +94,7 @@
 
 			float3 GetThreeDeePos(float2 xzPos, int level, float levelOffset)
 			{
-				float yPos = level * _BranchHeight + levelOffset;
+				float yPos = level * _BranchHeight + levelOffset * _BranchHeight;
 				return float3(xzPos.x, yPos, xzPos.y);
 			}
 
@@ -171,6 +171,78 @@
 			{
 				float shade = dot(normalize(i.Normal), float3(0,.7,.7)) / 2 + .5;
 				return float4(i.BranchBaseColor + i.BranchLightColor * shade, 1);
+			}
+			ENDCG
+		}
+		Pass
+		{
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+
+			#include "UnityCG.cginc"
+
+			float _AvatarSize;
+
+			float _BranchHeight;
+
+			struct MeshData
+			{
+				float3 Pos;
+				float2 Uvs;
+				float3 Normal;
+				float3 Color;
+			};
+			struct FixedBranchData
+			{
+				int ParentIndex;
+				int ImmediateChildenCount;
+				int BranchLevel;
+				float LevelOffset;
+				float BranchParameter;
+				int Scale;
+			};
+			struct VariableBranchData
+			{
+				float2 Pos;
+				float2 CurrentSiblingPressure;
+			};
+
+			StructuredBuffer<MeshData> _CardMeshBuffer;
+			StructuredBuffer<VariableBranchData> _VariableDataBuffer;
+			StructuredBuffer<FixedBranchData> _FixedDataBuffer;
+
+			struct v2f
+			{
+				float4 Vertex : SV_POSITION;
+				float Alpha : COLOR0;
+				float2 Uvs : TEXCOORD0;
+			};
+
+			float3 GetThreeDeePos(float2 xzPos, int level, float levelOffset)
+			{
+				float yPos = level * _BranchHeight + levelOffset * _BranchHeight;
+				return float3(xzPos.x, yPos, xzPos.y);
+			}
+
+			v2f vert(uint meshId : SV_VertexID, uint instanceId : SV_InstanceID)
+			{ 
+				v2f o;
+				MeshData meshData = _CardMeshBuffer[meshId];
+				FixedBranchData fixedStartData = _FixedDataBuffer[instanceId];
+				VariableBranchData variableStartData = _VariableDataBuffer[instanceId];
+;
+				float3 endPoint = GetThreeDeePos(variableStartData.Pos, fixedStartData.BranchLevel, fixedStartData.LevelOffset);
+				o.Vertex = mul(UNITY_MATRIX_P, mul(UNITY_MATRIX_V, float4(endPoint, 1)) + float4(meshData.Pos * _AvatarSize, 0));
+				o.Vertex.z += .04;
+				o.Alpha = meshData.Color.x;
+				o.Uvs = meshData.Uvs;
+				return o;
+			} 
+			
+			fixed4 frag (v2f i) : SV_Target 
+			{ 
+				return float4(i.Uvs, 0, 1);
 			}
 			ENDCG
 		}

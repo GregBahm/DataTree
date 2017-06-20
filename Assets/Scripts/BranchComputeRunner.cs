@@ -25,9 +25,14 @@ public class BranchComputeRunner : MonoBehaviour
     public Material BranchMat;
     
     public Mesh BranchMesh;
+    public Mesh CardMesh;
 
-    private int _meshBufferStride = sizeof(float) * 3 + sizeof(float) * 2 + sizeof(float) * 3; // Pos, Uvs, Normals
-    private ComputeBuffer _meshBuffer;
+    private int _meshBufferStride = sizeof(float) * 3 + sizeof(float) * 2 + sizeof(float) * 3 + sizeof(float) * 3; // Pos, Uvs, Normals, Color
+    private ComputeBuffer _tubeMeshBuffer;
+    private int _tubeVertCount;
+    
+    private ComputeBuffer _cardMeshBuffer;
+    private int _cardVertCount;
 
     private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(float) + + sizeof(float) + sizeof(int); // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, BranchParameter, Scale
     private ComputeBuffer _fixedDataBuffer;
@@ -41,7 +46,6 @@ public class BranchComputeRunner : MonoBehaviour
     private int _computeFinalPositionsKernel;
     private int _computeSiblingPressureKernel;
 
-    private int _meshvertCount;
     private int _nodeCount;
     private int[] _siblingPairCounts;
     private int[] _siblingBatchSizes;
@@ -52,6 +56,7 @@ public class BranchComputeRunner : MonoBehaviour
         public Vector3 Pos;
         public Vector2 Uvs;
         public Vector3 Normal;
+        public Vector3 Color;
     }
     struct FixedBranchData
     {
@@ -93,8 +98,11 @@ public class BranchComputeRunner : MonoBehaviour
         
         _computeFinalPositionsKernel = BranchCompute.FindKernel("ComputeFinalPositions");
         _computeSiblingPressureKernel = BranchCompute.FindKernel("ComputeSiblingPressure");
-        _meshvertCount = BranchMesh.triangles.Length;
-        _meshBuffer = GetMeshBuffer(BranchMesh);
+
+        _tubeVertCount = BranchMesh.triangles.Length;
+        _tubeMeshBuffer = GetMeshBuffer(BranchMesh);
+        _cardVertCount = CardMesh.triangles.Length;
+        _cardMeshBuffer = GetMeshBuffer(CardMesh);
         
         _nodeCount = rootNode.TotalChildCount + 1;
         Node[] nodeList = GetNodeList(rootNode);
@@ -265,20 +273,23 @@ public class BranchComputeRunner : MonoBehaviour
 
     private ComputeBuffer GetMeshBuffer(Mesh mesh)
     {
-        MeshData[] meshVerts = new MeshData[_meshvertCount];
-        ComputeBuffer ret = new ComputeBuffer(_meshvertCount, _meshBufferStride);
-        for (int i = 0; i < _meshvertCount; i++)
+        int vertCount = mesh.triangles.Length;
+        MeshData[] meshVerts = new MeshData[vertCount];
+        ComputeBuffer ret = new ComputeBuffer(vertCount, _meshBufferStride);
+        for (int i = 0; i < vertCount; i++)
         {
-            meshVerts[i].Pos = mesh.vertices[mesh.triangles[_meshvertCount - i - 1]];
-            meshVerts[i].Uvs = mesh.uv[mesh.triangles[_meshvertCount - i - 1]];
-            meshVerts[i].Normal = mesh.normals[mesh.triangles[_meshvertCount - i - 1]];
+            Color color = mesh.colors.Length == 0 ? Color.red : mesh.colors[mesh.triangles[vertCount - i - 1]];
+            meshVerts[i].Pos = mesh.vertices[mesh.triangles[vertCount - i - 1]];
+            meshVerts[i].Uvs = mesh.uv[mesh.triangles[vertCount - i - 1]];
+            meshVerts[i].Normal = mesh.normals[mesh.triangles[vertCount - i - 1]];
+            meshVerts[i].Color = new Vector3(color.r, color.g, color.b);
         }
         ret.SetData(meshVerts);
         return ret;
     }
 
     private void OnRenderObject()
-    {
+    { 
         BranchMat.SetFloat("_AvatarSize", AvatarSize);
         BranchMat.SetFloat("_BranchHeight", BranchHeight);
         BranchMat.SetFloat("_BranchThickness", BranchThickness);
@@ -287,18 +298,22 @@ public class BranchComputeRunner : MonoBehaviour
         BranchMat.SetColor("_BranchLargeColor", BranchLargeColor);
         BranchMat.SetColor("_BranchTipColor", BranchTipColor);
         BranchMat.SetFloat("_BranchColorRamp", BranchColorRamp);
-        BranchMat.SetFloat("_BranchColorOffset", BranchColorOffset); 
+        BranchMat.SetFloat("_BranchColorOffset", BranchColorOffset);
 
-        BranchMat.SetBuffer("_MeshBuffer", _meshBuffer);
+        BranchMat.SetBuffer("_MeshBuffer", _tubeMeshBuffer);
+        BranchMat.SetBuffer("_CardMeshBuffer", _cardMeshBuffer);
         BranchMat.SetBuffer("_FixedDataBuffer", _fixedDataBuffer);
         BranchMat.SetBuffer("_VariableDataBuffer", _variableDataBuffer);
         BranchMat.SetPass(0);
-        Graphics.DrawProcedural(MeshTopology.Quads, _meshvertCount, _nodeCount);
+        Graphics.DrawProcedural(MeshTopology.Quads, _tubeVertCount, _nodeCount);
+        BranchMat.SetPass(1);
+        Graphics.DrawProcedural(MeshTopology.Quads, _cardVertCount, _nodeCount);
     }
 
     private void OnDestroy()
     {
-        _meshBuffer.Dispose();
+        _tubeMeshBuffer.Dispose();
+        _cardMeshBuffer.Dispose();
         _fixedDataBuffer.Dispose();
         _variableDataBuffer.Dispose();
         for (int i = 0; i < _siblingPairsBuffers.Length; i++)
