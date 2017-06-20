@@ -41,7 +41,7 @@ public class Node
         _name = name;
         _accountUrl = accountUrl;
         _avatarUrl = avatarUrl;
-        _subUrl = accountUrl.Replace("http://", "").Replace(".tumblr.com/", "");
+        _subUrl = accountUrl.Replace("http://", "").Replace("https://", "").Split('.')[0];
         _children = children.Select(item => item.ToNode(this)).ToArray();
         _immediateChildCount = _children.Count();
         _totalChildCount = _children.Sum(child => child.TotalChildCount + 1);

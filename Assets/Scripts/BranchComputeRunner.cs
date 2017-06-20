@@ -9,6 +9,7 @@ public class BranchComputeRunner : MonoBehaviour
     public Color BranchSmallColor;
     public Color BranchLargeColor;
     public Color BranchTipColor;
+    public Color AvatarFrame;
     public float AvatarSize;
     public float BranchHeight;
     public float BranchThickness;
@@ -25,16 +26,20 @@ public class BranchComputeRunner : MonoBehaviour
     public Material BranchMat;
     
     public Mesh BranchMesh;
-    public Mesh CardMesh;
+    public Mesh AvatarDisplayMesh;
+
+    public Material BlitMaterial;
+    private AvatarLoader _avatarLoader;
 
     private int _meshBufferStride = sizeof(float) * 3 + sizeof(float) * 2 + sizeof(float) * 3 + sizeof(float) * 3; // Pos, Uvs, Normals, Color
     private ComputeBuffer _tubeMeshBuffer;
     private int _tubeVertCount;
     
-    private ComputeBuffer _cardMeshBuffer;
-    private int _cardVertCount;
+    private ComputeBuffer _avatarMeshBuffer;
+    private int _avatarVertCount;
 
-    private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(float) + + sizeof(float) + sizeof(int); // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, BranchParameter, Scale
+    private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int)
+        + sizeof(float) + sizeof(float) + sizeof(int) + sizeof(float) * 2; // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, BranchParameter, Scale, AvatarUvOffset
     private ComputeBuffer _fixedDataBuffer;
 
     private int _variableDataStride = sizeof(float) * 2 + sizeof(int) * 2; // Pos, CurrentSiblingPressure
@@ -66,6 +71,7 @@ public class BranchComputeRunner : MonoBehaviour
         public float LevelOffset;
         public float BranchParameter;
         public int Scale;
+        public Vector2 AvatarUvOffset;
     }
     struct VariableBranchData
     {
@@ -95,20 +101,22 @@ public class BranchComputeRunner : MonoBehaviour
 
         DataProcessor processor = DataProcessor.GetTestProcessor();
         Node rootNode = processor.ProcessData();
-        
+
+        _avatarLoader = new AvatarLoader(processor, BlitMaterial);
+
         _computeFinalPositionsKernel = BranchCompute.FindKernel("ComputeFinalPositions");
         _computeSiblingPressureKernel = BranchCompute.FindKernel("ComputeSiblingPressure");
 
         _tubeVertCount = BranchMesh.triangles.Length;
         _tubeMeshBuffer = GetMeshBuffer(BranchMesh);
-        _cardVertCount = CardMesh.triangles.Length;
-        _cardMeshBuffer = GetMeshBuffer(CardMesh);
+        _avatarVertCount = AvatarDisplayMesh.triangles.Length;
+        _avatarMeshBuffer = GetMeshBuffer(AvatarDisplayMesh);
         
         _nodeCount = rootNode.TotalChildCount + 1;
         Node[] nodeList = GetNodeList(rootNode);
         Dictionary<Node, int> lookupTable = GetLookupTable(nodeList);
         _variableDataBuffer = GetVariableDataBuffer(rootNode, lookupTable);
-        _fixedDataBuffer = GetFixedDataBuffer(nodeList, lookupTable);
+        _fixedDataBuffer = GetFixedDataBuffer(nodeList, lookupTable, _avatarLoader);
 
         SiblingsSetupData siblingSetup = GetSibblingSetup(nodeList, lookupTable);
         _siblingPairCounts = siblingSetup.PairCounts;
@@ -213,26 +221,27 @@ public class BranchComputeRunner : MonoBehaviour
         return new SiblingSetupDatum() { Buffer = buffer, PairsCount = siblingPairs };
     }
 
-    private FixedBranchData GetFixedBranchDatum(Node node, Dictionary<Node, int> lookupTable)
+    private FixedBranchData GetFixedBranchDatum(Node node, Dictionary<Node, int> lookupTable, AvatarLoader avatarLoader)
     {
         FixedBranchData ret = new FixedBranchData()
         {
             BranchLevel = node.ParentCount,
             ImmediateChildenCount = node.ImmediateChildCount,
-            LevelOffset = UnityEngine.Random.value + .5f,
+            LevelOffset = UnityEngine.Random.value + 1f,
             Scale = node.TotalChildCount + 1,
             ParentIndex = node.Parent == null ? 0 : lookupTable[node.Parent],
-            BranchParameter = (float)node.ParentCount / (node.ParentCount + node.LevelsOfChildren)
+            BranchParameter = (float)node.ParentCount / (node.ParentCount + node.LevelsOfChildren),
+            AvatarUvOffset = avatarLoader.GetCoordsFor(node)
         };
         return ret;
     }
-    private ComputeBuffer GetFixedDataBuffer(Node[] nodes, Dictionary<Node, int> lookupTable)
+    private ComputeBuffer GetFixedDataBuffer(Node[] nodes, Dictionary<Node, int> lookupTable, AvatarLoader avatarLoader)
     {
         FixedBranchData[] data = new FixedBranchData[_nodeCount];
         ComputeBuffer buffer = new ComputeBuffer(_nodeCount, _fixedDataStride);
         for (int i = 0; i < _nodeCount; i++)
         {
-            data[i] = GetFixedBranchDatum(nodes[i], lookupTable);
+            data[i] = GetFixedBranchDatum(nodes[i], lookupTable, avatarLoader);
         }
         buffer.SetData(data);
         return buffer;
@@ -301,19 +310,21 @@ public class BranchComputeRunner : MonoBehaviour
         BranchMat.SetFloat("_BranchColorOffset", BranchColorOffset);
 
         BranchMat.SetBuffer("_MeshBuffer", _tubeMeshBuffer);
-        BranchMat.SetBuffer("_CardMeshBuffer", _cardMeshBuffer);
+        BranchMat.SetBuffer("_CardMeshBuffer", _avatarMeshBuffer);
         BranchMat.SetBuffer("_FixedDataBuffer", _fixedDataBuffer);
         BranchMat.SetBuffer("_VariableDataBuffer", _variableDataBuffer);
+        BranchMat.SetTexture("_AvatarAtlas", _avatarLoader.AtlasTexture);
+        BranchMat.SetColor("_AvatarColor", AvatarFrame);
         BranchMat.SetPass(0);
         Graphics.DrawProcedural(MeshTopology.Quads, _tubeVertCount, _nodeCount);
         BranchMat.SetPass(1);
-        Graphics.DrawProcedural(MeshTopology.Quads, _cardVertCount, _nodeCount);
+        Graphics.DrawProcedural(MeshTopology.Quads, _avatarVertCount, _nodeCount);
     }
 
     private void OnDestroy()
     {
         _tubeMeshBuffer.Dispose();
-        _cardMeshBuffer.Dispose();
+        _avatarMeshBuffer.Dispose();
         _fixedDataBuffer.Dispose();
         _variableDataBuffer.Dispose();
         for (int i = 0; i < _siblingPairsBuffers.Length; i++)

@@ -43,6 +43,7 @@
 				float LevelOffset;
 				float BranchParameter;
 				int Scale;
+				float2 AvatarUvOffset;
 			};
 			struct VariableBranchData
 			{
@@ -201,6 +202,7 @@
 				float LevelOffset;
 				float BranchParameter;
 				int Scale;
+				float2 AvatarUvOffset;
 			};
 			struct VariableBranchData
 			{
@@ -211,6 +213,10 @@
 			StructuredBuffer<MeshData> _CardMeshBuffer;
 			StructuredBuffer<VariableBranchData> _VariableDataBuffer;
 			StructuredBuffer<FixedBranchData> _FixedDataBuffer;
+
+			sampler2D _AvatarAtlas;
+			float4 _AvatarColor;
+			float _BranchThicknessRamp;
 
 			struct v2f
 			{
@@ -231,18 +237,23 @@
 				MeshData meshData = _CardMeshBuffer[meshId];
 				FixedBranchData fixedStartData = _FixedDataBuffer[instanceId];
 				VariableBranchData variableStartData = _VariableDataBuffer[instanceId];
-;
-				float3 endPoint = GetThreeDeePos(variableStartData.Pos, fixedStartData.BranchLevel, fixedStartData.LevelOffset);
-				o.Vertex = mul(UNITY_MATRIX_P, mul(UNITY_MATRIX_V, float4(endPoint, 1)) + float4(meshData.Pos * _AvatarSize, 0));
+
+
+				float scale = pow(fixedStartData.Scale * _AvatarSize, .3);
+
+				float3 rootPos = GetThreeDeePos(variableStartData.Pos, fixedStartData.BranchLevel, fixedStartData.LevelOffset);
+				float3 meshPos = meshData.Pos * scale;
+				o.Vertex = mul(UNITY_MATRIX_P, mul(UNITY_MATRIX_V, float4(rootPos, 1)) + float4(meshPos, 0));
 				o.Vertex.z += .04;
 				o.Alpha = meshData.Color.x;
-				o.Uvs = meshData.Uvs;
+				o.Uvs = meshData.Uvs / (1024 / 16) + fixedStartData.AvatarUvOffset;
 				return o;
 			} 
 			
 			fixed4 frag (v2f i) : SV_Target 
 			{ 
-				return float4(i.Uvs, 0, 1);
+				fixed4 avatarTexture = tex2D(_AvatarAtlas, i.Uvs);
+				return lerp(_AvatarColor, avatarTexture, i.Alpha);
 			}
 			ENDCG
 		}

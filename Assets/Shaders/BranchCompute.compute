@@ -10,7 +10,8 @@ struct FixedBranchData
 	int BranchLevel;
 	float LevelOffset;
 	float BranchParameter;
-	int Scale;
+    int Scale;
+    float2 AvatarUvOffset;
 };
 struct VariableBranchData
 {
