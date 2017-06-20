@@ -48,7 +48,8 @@
 			struct VariableBranchData
 			{
 				float2 Pos;
-				float2 CurrentSiblingPressure;
+				int2 CurrentSiblingPressure;
+				int2 ChildrenPositionSums;
 				float Locked;
 			};
 
@@ -208,7 +209,8 @@
 			struct VariableBranchData
 			{
 				float2 Pos;
-				float2 CurrentSiblingPressure;
+				int2 CurrentSiblingPressure;
+				int2 ChildrenPositionSums;
 				float Locked;
 			};
 

@@ -47,7 +47,7 @@ public class BranchComputeRunner : MonoBehaviour
         + sizeof(float) + sizeof(float) + sizeof(int) + sizeof(float) * 2; // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, BranchParameter, Scale, AvatarUvOffset
     private ComputeBuffer _fixedDataBuffer;
 
-    private int _variableDataStride = sizeof(float) * 2 + sizeof(int) * 2 + sizeof(float); // Pos, CurrentSiblingPressure, Locked
+    private int _variableDataStride = sizeof(float) * 2 + sizeof(int) * 2 + sizeof(int) * 2 + sizeof(float); // Pos, CurrentSiblingPressure, ChildrenPositionSums, Locked
     private ComputeBuffer _variableDataBuffer;
 
     private int _siblingPairsStride = sizeof(int) + sizeof(int); // SelfIndex, SiblingIndex
@@ -55,6 +55,7 @@ public class BranchComputeRunner : MonoBehaviour
 
     private int _computeFinalPositionsKernel;
     private int _computeSiblingPressureKernel;
+    private int _computeChildrenPositionsKernel;
 
     private int _nodeCount;
     private int[] _siblingPairCounts;
@@ -83,6 +84,7 @@ public class BranchComputeRunner : MonoBehaviour
     {
         public Vector2 Pos;
         public Vector2 CurrentSiblingPressure;
+        public Vector2 ChildrenPositionSums;
         public float Locked;
     }
     struct SiblingPair
@@ -118,6 +120,7 @@ public class BranchComputeRunner : MonoBehaviour
 
         _computeFinalPositionsKernel = BranchCompute.FindKernel("ComputeFinalPositions");
         _computeSiblingPressureKernel = BranchCompute.FindKernel("ComputeSiblingPressure");
+        _computeChildrenPositionsKernel = BranchCompute.FindKernel("ComputeChildrenPositions");
 
         _tubeVertCount = BranchMesh.triangles.Length;
         _tubeMeshBuffer = GetMeshBuffer(BranchMesh);
@@ -189,7 +192,16 @@ public class BranchComputeRunner : MonoBehaviour
     {
         UpdateCursor();
         DispatchSiblingPressure();
+        DispatchChildrenPositionSummer();
         DispatchFinalPositioner();
+    }
+
+    private void DispatchChildrenPositionSummer()
+    {
+        BranchCompute.SetFloat("_DrawPower", DrawPower);
+        BranchCompute.SetBuffer(_computeChildrenPositionsKernel, "_VariableDataBuffer", _variableDataBuffer);
+        BranchCompute.SetBuffer(_computeChildrenPositionsKernel, "_FixedDataBuffer", _fixedDataBuffer);
+        BranchCompute.Dispatch(_computeChildrenPositionsKernel, _nodeBatchSize, 1, 1);
     }
 
     private void UpdateCursor()
@@ -254,7 +266,7 @@ public class BranchComputeRunner : MonoBehaviour
         {
             BranchLevel = node.ParentCount,
             ImmediateChildenCount = node.ImmediateChildCount,
-            LevelOffset = UnityEngine.Random.value + 1f,
+            LevelOffset = UnityEngine.Random.value * .25f,
             Scale = node.TotalChildCount + 1,
             ParentIndex = node.Parent == null ? 0 : lookupTable[node.Parent],
             BranchParameter = (float)node.ParentCount / (node.ParentCount + node.LevelsOfChildren),

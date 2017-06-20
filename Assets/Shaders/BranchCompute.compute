@@ -1,7 +1,8 @@
 ﻿#pragma kernel ComputeFinalPositions
 #pragma kernel ComputeSiblingPressure
+#pragma kernel ComputeChildrenPositions
 
-#define IntDRes 1000
+#define IntDRes 1000 // We need to use "InterlockedAdd" to avoid racing conditions. But InterlockAdd only takes ints. So we multiply floats by this amount and then divide them back to get around the issue.
 
 struct FixedBranchData
 {
@@ -17,6 +18,7 @@ struct VariableBranchData
 {
     float2 Pos;
     int2 CurrentSiblingPressure;
+    int2 ChildrenPositionSums;
     float Locked;
 };
 struct SiblingPair
@@ -47,6 +49,12 @@ float2 DrawToParent(float2 pos, float2 parentPos)
 	return lerp(pos, parentPos, _DrawPower);
 }
 
+float2 DrawToChildren(float2 pos, int2 childrenPosSum, int childrenCount)
+{
+    float2 actualChildrenPosSum = (float2)childrenPosSum / IntDRes;
+    float2 averageChildrenPos = actualChildrenPosSum / childrenCount;
+    return lerp(pos, averageChildrenPos, _DrawPower);
+}
 
 float3 GetThreeDeePos(float2 xzPos, int level, float levelOffset)
 {
@@ -82,12 +90,29 @@ void ComputeFinalPositions(uint3 id : SV_DispatchThreadID)
         float2 newPos = variableData.Pos;
         newPos += (float2) variableData.CurrentSiblingPressure / IntDRes;
         newPos = DrawToParent(newPos, parentData.Pos);
+        if (id.x != 0 && fixedData.ImmediateChildenCount > 0)
+        {
+            newPos = DrawToChildren(newPos, variableData.ChildrenPositionSums, fixedData.ImmediateChildenCount);
+        }
 
         variableData.Pos = newPos;
     }
-
-	variableData.CurrentSiblingPressure = float2(0, 0);
+    
+    variableData.CurrentSiblingPressure = float2(0, 0);
+    variableData.ChildrenPositionSums = float2(0, 0);
 	_VariableDataBuffer[id.x] = variableData;
+}
+
+
+[numthreads(128, 1, 1)]
+void ComputeChildrenPositions(uint3 id : SV_DispatchThreadID)
+{
+    FixedBranchData fixedData = _FixedDataBuffer[id.x];
+    VariableBranchData variableData = _VariableDataBuffer[id.x];
+    int posX = variableData.Pos.x * IntDRes;
+    int posY = variableData.Pos.y * IntDRes;
+    InterlockedAdd(_VariableDataBuffer[fixedData.ParentIndex].ChildrenPositionSums.x, posX);
+    InterlockedAdd(_VariableDataBuffer[fixedData.ParentIndex].ChildrenPositionSums.y, posY);
 }
 
 float2 GetSiblingPressure(float2 self, float2 sibling)
