@@ -6,6 +6,11 @@ using UnityEngine;
 
 public class BranchComputeRunner : MonoBehaviour
 {
+    public CursorState CurrentCursorState;
+    private CursorState _lastCursorState;
+    public Transform Cursor;
+    private Vector3 _lastCursorPosition;
+
     public Color BranchSmallColor;
     public Color BranchLargeColor;
     public Color BranchTipColor;
@@ -42,7 +47,7 @@ public class BranchComputeRunner : MonoBehaviour
         + sizeof(float) + sizeof(float) + sizeof(int) + sizeof(float) * 2; // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, BranchParameter, Scale, AvatarUvOffset
     private ComputeBuffer _fixedDataBuffer;
 
-    private int _variableDataStride = sizeof(float) * 2 + sizeof(int) * 2; // Pos, CurrentSiblingPressure
+    private int _variableDataStride = sizeof(float) * 2 + sizeof(int) * 2 + sizeof(float); // Pos, CurrentSiblingPressure, Locked
     private ComputeBuffer _variableDataBuffer;
 
     private int _siblingPairsStride = sizeof(int) + sizeof(int); // SelfIndex, SiblingIndex
@@ -56,6 +61,7 @@ public class BranchComputeRunner : MonoBehaviour
     private int[] _siblingBatchSizes;
     private int _nodeBatchSize;
     private const int BatchSize = 128;
+
     struct MeshData
     {
         public Vector3 Pos;
@@ -77,6 +83,7 @@ public class BranchComputeRunner : MonoBehaviour
     {
         public Vector2 Pos;
         public Vector2 CurrentSiblingPressure;
+        public float Locked;
     }
     struct SiblingPair
     {
@@ -96,9 +103,14 @@ public class BranchComputeRunner : MonoBehaviour
         public ComputeBuffer Buffer;
     }
 
+    public enum CursorState
+    {
+        Free,
+        Dragging,
+    }
+
     void Start()
     {
-
         DataProcessor processor = DataProcessor.GetTestProcessor();
         Node rootNode = processor.ProcessData();
 
@@ -175,9 +187,24 @@ public class BranchComputeRunner : MonoBehaviour
 
     private void Update()
     {
+        UpdateCursor();
         DispatchSiblingPressure();
         DispatchFinalPositioner();
-    } 
+    }
+
+    private void UpdateCursor()
+    {
+        BranchCompute.SetFloat("_BranchHeight", BranchHeight);
+        bool cursorLocks = CurrentCursorState == CursorState.Dragging && _lastCursorState != CursorState.Dragging;
+        BranchCompute.SetFloat("_ControllerLocks", cursorLocks ? 1 : 0);
+        bool cursorClears = CurrentCursorState == CursorState.Free && _lastCursorState != CursorState.Free;
+        BranchCompute.SetFloat("_ClearLocks", cursorClears ? 1 : 0);
+        BranchCompute.SetVector("_ControllerPos", Cursor.position);
+        BranchCompute.SetFloat("_ControllerRadius", Cursor.localScale.x / 2);
+        BranchCompute.SetVector("_ControllerDelta", Cursor.position - _lastCursorPosition);
+        _lastCursorPosition = Cursor.position;
+        _lastCursorState = CurrentCursorState;
+    }
 
     private SiblingsSetupData GetSibblingSetup(Node[] nodes, Dictionary<Node, int> lookupTable)
     {

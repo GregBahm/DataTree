@@ -17,6 +17,7 @@ struct VariableBranchData
 {
     float2 Pos;
     int2 CurrentSiblingPressure;
+    float Locked;
 };
 struct SiblingPair
 {
@@ -32,9 +33,25 @@ float _DrawPower;
 float _RepelDist;
 float _RepelPower;
 
+float3 _ControllerPos;
+float _ControllerRadius;
+
+float _BranchHeight;
+
+bool _ControllerLocks;
+bool _ClearLocks;
+float3 _ControllerDelta;
+
 float2 DrawToParent(float2 pos, float2 parentPos)
 {
 	return lerp(pos, parentPos, _DrawPower);
+}
+
+
+float3 GetThreeDeePos(float2 xzPos, int level, float levelOffset)
+{
+    float yPos = level * _BranchHeight + levelOffset * _BranchHeight;
+    return float3(xzPos.x, yPos, xzPos.y);
 }
 
 [numthreads(128, 1, 1)]
@@ -44,11 +61,31 @@ void ComputeFinalPositions(uint3 id : SV_DispatchThreadID)
     FixedBranchData fixedData = _FixedDataBuffer[id.x];
 	VariableBranchData parentData = _VariableDataBuffer[fixedData.ParentIndex];
 
-	float2 newPos = variableData.Pos;
-	newPos += (float2)variableData.CurrentSiblingPressure / IntDRes;
-	newPos = DrawToParent(newPos, parentData.Pos);
+    if (_ControllerLocks && !variableData.Locked)
+    {
+        float3 currentPos = GetThreeDeePos(variableData.Pos, fixedData.BranchLevel, fixedData.BranchParameter);
+        bool withinControllerRadius = length(_ControllerPos - currentPos) < _ControllerRadius;
+        variableData.Locked = withinControllerRadius;
+    }
+    
+    if (_ClearLocks)
+    {
+        variableData.Locked = 0;
+    }
+    
+    if(variableData.Locked)
+    {
+        variableData.Pos += _ControllerDelta.xz;
+    }
+    else
+    {
+        float2 newPos = variableData.Pos;
+        newPos += (float2) variableData.CurrentSiblingPressure / IntDRes;
+        newPos = DrawToParent(newPos, parentData.Pos);
 
-	variableData.Pos = newPos;
+        variableData.Pos = newPos;
+    }
+
 	variableData.CurrentSiblingPressure = float2(0, 0);
 	_VariableDataBuffer[id.x] = variableData;
 }

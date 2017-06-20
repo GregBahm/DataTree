@@ -49,6 +49,7 @@
 			{
 				float2 Pos;
 				float2 CurrentSiblingPressure;
+				float Locked;
 			};
 
 			StructuredBuffer<MeshData> _MeshBuffer;
@@ -150,8 +151,8 @@
 				float endScale = GetBaseScale(fixedEndData.Scale);
 
 
-
 				float vertKey = meshData.Uvs.y;
+				float lockVal = lerp(variableStartData.Locked, variableEndData.Locked, vertKey);
 				float3 rootPos = GetRootPos(startPoint, endPoint, vertKey);
 				float3 scaler = GetScaler(startScale, endScale, vertKey);
 				float3 meshVert = meshData.Pos * scaler;
@@ -164,7 +165,7 @@
 				o.Normal = GetAdjustedNormal(meshData.Normal, startPoint, endPoint, vertKey);
 				float branchParam = lerp(fixedStartData.BranchParameter, fixedEndData.BranchParameter, vertKey);
 				o.BranchLightColor = _BranchTipColor * pow(branchParam, 4);
-				o.BranchBaseColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey);
+				o.BranchBaseColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey) + lockVal;
 				return o;
 			}
 			
@@ -208,6 +209,7 @@
 			{
 				float2 Pos;
 				float2 CurrentSiblingPressure;
+				float Locked;
 			};
 
 			StructuredBuffer<MeshData> _CardMeshBuffer;
