@@ -130,7 +130,8 @@ public class BranchComputeRunner : MonoBehaviour
         _nodeCount = rootNode.TotalChildCount + 1;
         Node[] nodeList = GetNodeList(rootNode);
         Dictionary<Node, int> lookupTable = GetLookupTable(nodeList);
-        _variableDataBuffer = GetVariableDataBuffer(rootNode, lookupTable);
+        int[] layerOffsetAccumulator = GetLayerOffsetAccumulator(nodeList, rootNode);
+        _variableDataBuffer = GetVariableDataBuffer(rootNode, lookupTable, layerOffsetAccumulator);
         _fixedDataBuffer = GetFixedDataBuffer(nodeList, lookupTable, _avatarLoader);
 
         SiblingsSetupData siblingSetup = GetSibblingSetup(nodeList, lookupTable);
@@ -139,6 +140,22 @@ public class BranchComputeRunner : MonoBehaviour
 
         _nodeBatchSize = Mathf.CeilToInt((float)_nodeCount / BatchSize);
         _siblingBatchSizes = _siblingPairCounts.Select(item => Mathf.CeilToInt((float)item / BatchSize)).ToArray();
+    }
+
+    private int[] GetLayerOffsetAccumulator(Node[] nodeList, Node rootNode)
+    {
+        int[] ret = new int[rootNode.LevelsOfChildren + 1];
+        foreach (Node node in nodeList)
+        {
+            ret[node.ParentCount]++;
+        }
+        for (int i = 0; i < ret.Length; i++)
+        {
+            int offsetVal = ret[i];
+            offsetVal = -offsetVal / 2;
+            ret[i] = offsetVal;
+        }
+        return ret;
     }
 
     private Node[] GetNodeList(Node rootNode)
@@ -286,19 +303,20 @@ public class BranchComputeRunner : MonoBehaviour
         return buffer;
     }
 
-    private ComputeBuffer GetVariableDataBuffer(Node rootNode, Dictionary<Node, int> lookupTable)
+    private ComputeBuffer GetVariableDataBuffer(Node rootNode, Dictionary<Node, int> lookupTable, int[] layerOffsetAccumulator)
     {
         VariableBranchData[] data = new VariableBranchData[_nodeCount];
         ComputeBuffer buffer = new ComputeBuffer(_nodeCount, _variableDataStride);
-        SetVariableBranchData(rootNode, Vector2.zero, data, lookupTable);
+        SetVariableBranchData(rootNode, Vector2.zero, data, lookupTable, layerOffsetAccumulator);
         buffer.SetData(data);
         return buffer;
     }
 
-    private void SetVariableBranchData(Node currentNode, Vector2 parentPos, VariableBranchData[] dataToSet, Dictionary<Node, int> lookupTable)
+    private void SetVariableBranchData(Node currentNode, Vector2 parentPos, VariableBranchData[] dataToSet, Dictionary<Node, int> lookupTable, int[] layerOffsetAccumulator)
     {
-        float newX = parentPos.x + (UnityEngine.Random.value * 2 - 1);
-        float newY = parentPos.y + (UnityEngine.Random.value * 2 - 1);
+        float newX = layerOffsetAccumulator[currentNode.ParentCount];
+        layerOffsetAccumulator[currentNode.ParentCount]++ ; //parentPos.x + (UnityEngine.Random.value * 2 - 1);
+        float newY = 0;//parentPos.y + (UnityEngine.Random.value * 2 - 1);
         Vector2 nodePos = new Vector2(newX, newY);
 
         int dataIndex = lookupTable[currentNode];
@@ -312,10 +330,9 @@ public class BranchComputeRunner : MonoBehaviour
             CurrentSiblingPressure = Vector2.zero,
         };
         dataToSet[dataIndex] = ret;
-
         foreach (Node child in currentNode.Children)
         {
-            SetVariableBranchData(child, nodePos, dataToSet, lookupTable);
+            SetVariableBranchData(child, nodePos, dataToSet, lookupTable, layerOffsetAccumulator);
         }
     }
 

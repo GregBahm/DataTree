@@ -46,7 +46,16 @@ public class Node
         _immediateChildCount = _children.Count();
         _totalChildCount = _children.Sum(child => child.TotalChildCount + 1);
         _parentCount = GetParentCount(parent, 0);
-        _levelsOfChildren = _immediateChildCount > 0 ? _children.Max(child => child.ParentCount - _parentCount) : 0;
+        _levelsOfChildren = GetMaxParentCount(this) - _parentCount;
+    }
+
+    private int GetMaxParentCount(Node node)
+    {
+        if(node.ImmediateChildCount > 0)
+        {
+            return node.Children.Max(child => GetMaxParentCount(child));
+        }
+        return node.ParentCount;
     }
 
     private int GetParentCount(Node parent, int count)
