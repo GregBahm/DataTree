@@ -354,7 +354,9 @@ public class BranchComputeRunner : MonoBehaviour
     }
 
     private void OnRenderObject()
-    { 
+    {
+        BranchMat.SetVector("_ControllerPos", Cursor.position);
+        BranchMat.SetFloat("_ControllerRadius", Cursor.localScale.x / 2);
         BranchMat.SetFloat("_AvatarSize", AvatarSize);
         BranchMat.SetFloat("_BranchHeight", BranchHeight);
         BranchMat.SetFloat("_BranchThickness", BranchThickness);

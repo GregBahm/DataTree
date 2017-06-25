@@ -221,6 +221,8 @@
 			sampler2D _AvatarAtlas;
 			float4 _AvatarColor;
 			float _BranchThicknessRamp;
+			float3 _ControllerPos;
+			float _ControllerRadius;
 
 			struct v2f
 			{
@@ -246,7 +248,10 @@
 				float scale = pow(fixedStartData.Scale * _AvatarSize, .3);
 
 				float3 rootPos = GetThreeDeePos(variableStartData.Pos, fixedStartData.BranchLevel, fixedStartData.LevelOffset);
-				float3 meshPos = meshData.Pos * scale;
+				float distToController = length(rootPos - _ControllerPos);
+				float controllerScale = saturate(_ControllerRadius * 2 - distToController);
+
+				float3 meshPos = meshData.Pos * scale * controllerScale;
 				o.Vertex = mul(UNITY_MATRIX_P, mul(UNITY_MATRIX_V, float4(rootPos, 1)) + float4(meshPos, 0));
 				o.Vertex.z += .04;
 				o.Alpha = meshData.Color.x;
