@@ -57,7 +57,7 @@ public class BranchComputeRunner : MonoBehaviour
     private int _computeSiblingPressureKernel;
     private int _computeChildrenPositionsKernel;
 
-    private int _nodeCount;
+    public int _nodeCount;
     private int[] _siblingPairCounts;
     private int[] _siblingBatchSizes;
     private int _nodeBatchSize;
