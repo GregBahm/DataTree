@@ -9,6 +9,7 @@
 		LOD 100
 		Pass
 		{
+			Cull Front
 			CGPROGRAM
 			#pragma vertex vert
 			#pragma fragment frag
@@ -28,13 +29,6 @@
 			float _BranchColorRamp;
 			float _BranchColorOffset;
 
-			struct MeshData
-			{
-				float3 Pos;
-				float2 Uvs;
-				float3 Normal;
-				float3 Color;
-			};
 			struct FixedBranchData
 			{
 				int ParentIndex;
@@ -53,7 +47,6 @@
 				float Locked;
 			};
 
-			StructuredBuffer<MeshData> _MeshBuffer;
 			StructuredBuffer<VariableBranchData> _VariableDataBuffer;
 			StructuredBuffer<FixedBranchData> _FixedDataBuffer;
 
@@ -137,10 +130,9 @@
 				return RotatePointAroundAxis(basePoint, axis, angle);
 			}
 
-			v2f vert(uint meshId : SV_VertexID, uint instanceId : SV_InstanceID)
+			v2f vert(appdata_full v, uint instanceId : SV_InstanceID)
 			{ 
 				v2f o;
-				MeshData meshData = _MeshBuffer[meshId];
 				FixedBranchData fixedStartData = _FixedDataBuffer[instanceId];
 				VariableBranchData variableStartData = _VariableDataBuffer[instanceId];
 				FixedBranchData fixedEndData = _FixedDataBuffer[fixedStartData.ParentIndex];
@@ -152,31 +144,32 @@
 				float endScale = GetBaseScale(fixedEndData.Scale);
 
 
-				float vertKey = meshData.Uvs.y;
+				float vertKey = v.texcoord.y;
 				float lockVal = lerp(variableStartData.Locked, variableEndData.Locked, vertKey);
 				float3 rootPos = GetRootPos(startPoint, endPoint, vertKey);
 				float3 scaler = GetScaler(startScale, endScale, vertKey);
-				float3 meshVert = meshData.Pos * scaler;
+				float3 meshVert = v.vertex * scaler;
 				meshVert = GetRotatedVert(meshVert, vertKey, startPoint, endPoint);
 				float4 newPos = float4(meshVert + rootPos, 1);
 				float colorKey = lerp(startScale, endScale, vertKey);
 				colorKey = pow(colorKey, _BranchColorRamp) - _BranchColorOffset;
 				 
 				o.Vertex = UnityObjectToClipPos(newPos);
-				o.Normal = GetAdjustedNormal(meshData.Normal, startPoint, endPoint, vertKey);
+				o.Normal = GetAdjustedNormal(v.normal, startPoint, endPoint, vertKey);
 				float branchParam = lerp(fixedStartData.BranchParameter, fixedEndData.BranchParameter, vertKey);
 				o.BranchLightColor = _BranchTipColor * pow(branchParam, 4);
 				o.BranchBaseColor = lerp(_BranchSmallColor, _BranchLargeColor, colorKey) + lockVal;
 				return o;
 			}
 			
-			fixed4 frag (v2f i) : SV_Target 
+			fixed4 frag(v2f i) : SV_Target
 			{
 				float shade = dot(normalize(i.Normal), float3(0,.7,.7)) / 2 + .5;
 				return float4(i.BranchBaseColor + i.BranchLightColor * shade, 1);
 			}
 			ENDCG
 		}
+		/*
 		Pass
 		{
 			CGPROGRAM
@@ -265,6 +258,6 @@
 				return lerp(_AvatarColor, avatarTexture, i.Alpha);
 			}
 			ENDCG
-		}
+		}*/
 	}
 }

@@ -11,6 +11,10 @@ public class BranchComputeRunner : MonoBehaviour
     public Transform Cursor;
     private Vector3 _lastCursorPosition;
 
+
+    [SerializeField]
+    private MeshRenderer boundsSource;
+
     public Color BranchSmallColor;
     public Color BranchLargeColor;
     public Color BranchTipColor;
@@ -36,10 +40,6 @@ public class BranchComputeRunner : MonoBehaviour
     public Material BlitMaterial;
     private AvatarLoader _avatarLoader;
 
-    private int _meshBufferStride = sizeof(float) * 3 + sizeof(float) * 2 + sizeof(float) * 3 + sizeof(float) * 3; // Pos, Uvs, Normals, Color
-    private ComputeBuffer _tubeMeshBuffer;
-    private int _tubeVertCount;
-    
     private ComputeBuffer _avatarMeshBuffer;
     private int _avatarVertCount;
 
@@ -122,11 +122,6 @@ public class BranchComputeRunner : MonoBehaviour
         _computeSiblingPressureKernel = BranchCompute.FindKernel("ComputeSiblingPressure");
         _computeChildrenPositionsKernel = BranchCompute.FindKernel("ComputeChildrenPositions");
 
-        _tubeVertCount = BranchMesh.triangles.Length;
-        _tubeMeshBuffer = GetMeshBuffer(BranchMesh);
-        _avatarVertCount = AvatarDisplayMesh.triangles.Length;
-        _avatarMeshBuffer = GetMeshBuffer(AvatarDisplayMesh);
-        
         _nodeCount = rootNode.TotalChildCount + 1;
         Node[] nodeList = GetNodeList(rootNode);
         Dictionary<Node, int> lookupTable = GetLookupTable(nodeList);
@@ -336,23 +331,6 @@ public class BranchComputeRunner : MonoBehaviour
         }
     }
 
-    private ComputeBuffer GetMeshBuffer(Mesh mesh)
-    {
-        int vertCount = mesh.triangles.Length;
-        MeshData[] meshVerts = new MeshData[vertCount];
-        ComputeBuffer ret = new ComputeBuffer(vertCount, _meshBufferStride);
-        for (int i = 0; i < vertCount; i++)
-        {
-            Color color = mesh.colors.Length == 0 ? Color.red : mesh.colors[mesh.triangles[vertCount - i - 1]];
-            meshVerts[i].Pos = mesh.vertices[mesh.triangles[vertCount - i - 1]];
-            meshVerts[i].Uvs = mesh.uv[mesh.triangles[vertCount - i - 1]];
-            meshVerts[i].Normal = mesh.normals[mesh.triangles[vertCount - i - 1]];
-            meshVerts[i].Color = new Vector3(color.r, color.g, color.b);
-        }
-        ret.SetData(meshVerts);
-        return ret;
-    }
-
     private void OnRenderObject()
     {
         BranchMat.SetVector("_ControllerPos", Cursor.position);
@@ -367,21 +345,21 @@ public class BranchComputeRunner : MonoBehaviour
         BranchMat.SetFloat("_BranchColorRamp", BranchColorRamp);
         BranchMat.SetFloat("_BranchColorOffset", BranchColorOffset);
 
-        BranchMat.SetBuffer("_MeshBuffer", _tubeMeshBuffer);
         BranchMat.SetBuffer("_CardMeshBuffer", _avatarMeshBuffer);
         BranchMat.SetBuffer("_FixedDataBuffer", _fixedDataBuffer);
         BranchMat.SetBuffer("_VariableDataBuffer", _variableDataBuffer);
         BranchMat.SetTexture("_AvatarAtlas", _avatarLoader.AtlasTexture);
         BranchMat.SetColor("_AvatarColor", AvatarFrame);
         BranchMat.SetPass(0);
-        Graphics.DrawProcedural(MeshTopology.Quads, _tubeVertCount, _nodeCount);
-        BranchMat.SetPass(1);
-        Graphics.DrawProcedural(MeshTopology.Quads, _avatarVertCount, _nodeCount);
+
+        Graphics.DrawMeshInstancedProcedural(BranchMesh, 0, BranchMat, boundsSource.bounds, _nodeCount);
+
+        //BranchMat.SetPass(1);
+        //Graphics.DrawProcedural(MeshTopology.Quads, _avatarVertCount, _nodeCount);
     }
 
     private void OnDestroy()
     {
-        _tubeMeshBuffer.Dispose();
         _avatarMeshBuffer.Dispose();
         _fixedDataBuffer.Dispose();
         _variableDataBuffer.Dispose();
