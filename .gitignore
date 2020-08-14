@@ -1,8 +1,11 @@
 /Library/
 /Temp/
+/obj/
+/Packages/
 /DataTree.csproj
 /DataTree.Editor.csproj
 /DataTree.Plugins.csproj
 /DataTree.sln
 /Builds/
 /.vs/
+*.csproj

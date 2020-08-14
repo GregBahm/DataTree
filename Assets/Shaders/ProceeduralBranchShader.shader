@@ -20,14 +20,13 @@
 			float3 _BranchLargeColor;
 			float3 _BranchTipColor;
 
-			float _AvatarSize;
-
 			float _BranchHeight;
 
 			float _BranchThickness;
 			float _BranchThicknessRamp;
 			float _BranchColorRamp;
 			float _BranchColorOffset;
+			float4x4 _TreeTransform;
 
 			struct FixedBranchData
 			{
@@ -36,8 +35,7 @@
 				int BranchLevel;
 				float LevelOffset;
 				float BranchParameter;
-				int Scale;
-				float2 AvatarUvOffset;
+				int Scale; 
 			};
 			struct VariableBranchData
 			{
@@ -52,7 +50,7 @@
 
 			struct v2f
 			{
-				float4 Vertex : SV_POSITION;
+				float4 Vertex : POSITION;
 				float3 BranchBaseColor : TEXCOORD0;
 				float3 BranchLightColor : TEXCOORD1;
 				float3 Normal : NORMAL;
@@ -150,11 +148,12 @@
 				float3 scaler = GetScaler(startScale, endScale, vertKey);
 				float3 meshVert = v.vertex * scaler;
 				meshVert = GetRotatedVert(meshVert, vertKey, startPoint, endPoint);
-				float4 newPos = float4(meshVert + rootPos, 1);
+				float3 newPos = meshVert + rootPos;
+				newPos = mul(_TreeTransform, float4(newPos, 1));
 				float colorKey = lerp(startScale, endScale, vertKey);
 				colorKey = pow(colorKey, _BranchColorRamp) - _BranchColorOffset;
 				 
-				o.Vertex = UnityObjectToClipPos(newPos);
+				o.Vertex = mul(UNITY_MATRIX_VP, float4(newPos, 1.0f));
 				o.Normal = GetAdjustedNormal(v.normal, startPoint, endPoint, vertKey);
 				float branchParam = lerp(fixedStartData.BranchParameter, fixedEndData.BranchParameter, vertKey);
 				o.BranchLightColor = _BranchTipColor * pow(branchParam, 4);
@@ -169,95 +168,5 @@
 			}
 			ENDCG
 		}
-		/*
-		Pass
-		{
-			CGPROGRAM
-			#pragma vertex vert
-			#pragma fragment frag
-
-			#include "UnityCG.cginc"
-
-			float _AvatarSize;
-
-			float _BranchHeight;
-
-			struct MeshData
-			{
-				float3 Pos;
-				float2 Uvs;
-				float3 Normal;
-				float3 Color;
-			};
-			struct FixedBranchData
-			{
-				int ParentIndex;
-				int ImmediateChildenCount;
-				int BranchLevel;
-				float LevelOffset;
-				float BranchParameter;
-				int Scale;
-				float2 AvatarUvOffset;
-			};
-			struct VariableBranchData
-			{
-				float2 Pos;
-				int2 CurrentSiblingPressure;
-				int2 ChildrenPositionSums;
-				float Locked;
-			};
-
-			StructuredBuffer<MeshData> _CardMeshBuffer;
-			StructuredBuffer<VariableBranchData> _VariableDataBuffer;
-			StructuredBuffer<FixedBranchData> _FixedDataBuffer;
-
-			sampler2D _AvatarAtlas;
-			float4 _AvatarColor;
-			float _BranchThicknessRamp;
-			float3 _ControllerPos;
-			float _ControllerRadius;
-
-			struct v2f
-			{
-				float4 Vertex : SV_POSITION;
-				float Alpha : COLOR0;
-				float2 Uvs : TEXCOORD0;
-			};
-
-			float3 GetThreeDeePos(float2 xzPos, int level, float levelOffset)
-			{
-				float yPos = level * _BranchHeight + levelOffset * _BranchHeight;
-				return float3(xzPos.x, yPos, xzPos.y);
-			}
-
-			v2f vert(uint meshId : SV_VertexID, uint instanceId : SV_InstanceID)
-			{ 
-				v2f o;
-				MeshData meshData = _CardMeshBuffer[meshId];
-				FixedBranchData fixedStartData = _FixedDataBuffer[instanceId];
-				VariableBranchData variableStartData = _VariableDataBuffer[instanceId];
-
-
-				float scale = pow(fixedStartData.Scale * _AvatarSize, .3);
-
-				float3 rootPos = GetThreeDeePos(variableStartData.Pos, fixedStartData.BranchLevel, fixedStartData.LevelOffset);
-				float distToController = length(rootPos - _ControllerPos);
-				float controllerScale = saturate(_ControllerRadius * 2 - distToController);
-
-				float3 meshPos = meshData.Pos * scale * controllerScale;
-				o.Vertex = mul(UNITY_MATRIX_P, mul(UNITY_MATRIX_V, float4(rootPos, 1)) + float4(meshPos, 0));
-				o.Vertex.z += .04;
-				o.Alpha = meshData.Color.x;
-				o.Uvs = meshData.Uvs / (1024 / 16) + fixedStartData.AvatarUvOffset;
-				return o;
-			} 
-			
-			fixed4 frag (v2f i) : SV_Target 
-			{ 
-				fixed4 avatarTexture = tex2D(_AvatarAtlas, i.Uvs);
-				return lerp(_AvatarColor, avatarTexture, i.Alpha);
-			}
-			ENDCG
-		}*/
 	}
 }

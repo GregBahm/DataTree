@@ -18,8 +18,6 @@ public class BranchComputeRunner : MonoBehaviour
     public Color BranchSmallColor;
     public Color BranchLargeColor;
     public Color BranchTipColor;
-    public Color AvatarFrame;
-    public float AvatarSize;
     public float BranchHeight;
     public float BranchThickness;
     public float BranchThicknessRamp;
@@ -35,22 +33,27 @@ public class BranchComputeRunner : MonoBehaviour
     public Material BranchMat;
     
     public Mesh BranchMesh;
-    public Mesh AvatarDisplayMesh;
 
-    public Material BlitMaterial;
-    private AvatarLoader _avatarLoader;
+    private int _fixedDataStride =
+        sizeof(int)         // ParentIndex
+        + sizeof(int)       // ImmediateChildrenCount 
+        + sizeof(int)       // BranchLevel 
+        + sizeof(float)     // LevelOffset 
+        + sizeof(float)     // BranchParameter 
+        + sizeof(int);      // Scale
 
-    private ComputeBuffer _avatarMeshBuffer;
-    private int _avatarVertCount;
-
-    private int _fixedDataStride = sizeof(int) + sizeof(int) + sizeof(int)
-        + sizeof(float) + sizeof(float) + sizeof(int) + sizeof(float) * 2; // ParentIndex, ImmediateChildrenCount, BranchLevel, LevelOffset, BranchParameter, Scale, AvatarUvOffset
     private ComputeBuffer _fixedDataBuffer;
 
-    private int _variableDataStride = sizeof(float) * 2 + sizeof(int) * 2 + sizeof(int) * 2 + sizeof(float); // Pos, CurrentSiblingPressure, ChildrenPositionSums, Locked
+    private int _variableDataStride = 
+        sizeof(float) * 2   // Pos
+        + sizeof(int) * 2   // CurrentSiblingPressure
+        + sizeof(int) * 2   // ChildrenPositionSums
+        + sizeof(float);    // Locked
     private ComputeBuffer _variableDataBuffer;
 
-    private int _siblingPairsStride = sizeof(int) + sizeof(int); // SelfIndex, SiblingIndex
+    private int _siblingPairsStride = 
+        sizeof(int)     // SelfIndex
+        + sizeof(int);  // SiblingIndex
     private ComputeBuffer[] _siblingPairsBuffers;
 
     private int _computeFinalPositionsKernel;
@@ -78,7 +81,6 @@ public class BranchComputeRunner : MonoBehaviour
         public float LevelOffset;
         public float BranchParameter;
         public int Scale;
-        public Vector2 AvatarUvOffset;
     }
     struct VariableBranchData
     {
@@ -116,8 +118,6 @@ public class BranchComputeRunner : MonoBehaviour
         DataProcessor processor = DataProcessor.GetTestProcessor();
         Node rootNode = processor.ProcessData();
 
-        _avatarLoader = new AvatarLoader(processor, BlitMaterial);
-
         _computeFinalPositionsKernel = BranchCompute.FindKernel("ComputeFinalPositions");
         _computeSiblingPressureKernel = BranchCompute.FindKernel("ComputeSiblingPressure");
         _computeChildrenPositionsKernel = BranchCompute.FindKernel("ComputeChildrenPositions");
@@ -127,7 +127,7 @@ public class BranchComputeRunner : MonoBehaviour
         Dictionary<Node, int> lookupTable = GetLookupTable(nodeList);
         int[] layerOffsetAccumulator = GetLayerOffsetAccumulator(nodeList, rootNode);
         _variableDataBuffer = GetVariableDataBuffer(rootNode, lookupTable, layerOffsetAccumulator);
-        _fixedDataBuffer = GetFixedDataBuffer(nodeList, lookupTable, _avatarLoader);
+        _fixedDataBuffer = GetFixedDataBuffer(nodeList, lookupTable);
 
         SiblingsSetupData siblingSetup = GetSibblingSetup(nodeList, lookupTable);
         _siblingPairCounts = siblingSetup.PairCounts;
@@ -206,6 +206,7 @@ public class BranchComputeRunner : MonoBehaviour
         DispatchSiblingPressure();
         DispatchChildrenPositionSummer();
         DispatchFinalPositioner();
+        DrawTree();
     }
 
     private void DispatchChildrenPositionSummer()
@@ -223,10 +224,10 @@ public class BranchComputeRunner : MonoBehaviour
         BranchCompute.SetFloat("_ControllerLocks", cursorLocks ? 1 : 0);
         bool cursorClears = CurrentCursorState == CursorState.Free && _lastCursorState != CursorState.Free;
         BranchCompute.SetFloat("_ClearLocks", cursorClears ? 1 : 0);
-        BranchCompute.SetVector("_ControllerPos", Cursor.position);
+        BranchCompute.SetVector("_ControllerPos", Cursor.localPosition);
         BranchCompute.SetFloat("_ControllerRadius", Cursor.localScale.x / 2);
-        BranchCompute.SetVector("_ControllerDelta", Cursor.position - _lastCursorPosition);
-        _lastCursorPosition = Cursor.position;
+        BranchCompute.SetVector("_ControllerDelta", Cursor.localPosition - _lastCursorPosition);
+        _lastCursorPosition = Cursor.localPosition;
         _lastCursorState = CurrentCursorState;
     }
 
@@ -272,7 +273,7 @@ public class BranchComputeRunner : MonoBehaviour
         return new SiblingSetupDatum() { Buffer = buffer, PairsCount = siblingPairs };
     }
 
-    private FixedBranchData GetFixedBranchDatum(Node node, Dictionary<Node, int> lookupTable, AvatarLoader avatarLoader)
+    private FixedBranchData GetFixedBranchDatum(Node node, Dictionary<Node, int> lookupTable)
     {
         FixedBranchData ret = new FixedBranchData()
         {
@@ -282,17 +283,16 @@ public class BranchComputeRunner : MonoBehaviour
             Scale = node.TotalChildCount + 1,
             ParentIndex = node.Parent == null ? 0 : lookupTable[node.Parent],
             BranchParameter = (float)node.ParentCount / (node.ParentCount + node.LevelsOfChildren),
-            AvatarUvOffset = avatarLoader.GetCoordsFor(node)
         };
         return ret;
     }
-    private ComputeBuffer GetFixedDataBuffer(Node[] nodes, Dictionary<Node, int> lookupTable, AvatarLoader avatarLoader)
+    private ComputeBuffer GetFixedDataBuffer(Node[] nodes, Dictionary<Node, int> lookupTable)
     {
         FixedBranchData[] data = new FixedBranchData[_nodeCount];
         ComputeBuffer buffer = new ComputeBuffer(_nodeCount, _fixedDataStride);
         for (int i = 0; i < _nodeCount; i++)
         {
-            data[i] = GetFixedBranchDatum(nodes[i], lookupTable, avatarLoader);
+            data[i] = GetFixedBranchDatum(nodes[i], lookupTable);
         }
         buffer.SetData(data);
         return buffer;
@@ -331,11 +331,10 @@ public class BranchComputeRunner : MonoBehaviour
         }
     }
 
-    private void OnRenderObject()
+    private void DrawTree()
     {
-        BranchMat.SetVector("_ControllerPos", Cursor.position);
+        BranchMat.SetVector("_ControllerPos", Cursor.localPosition);
         BranchMat.SetFloat("_ControllerRadius", Cursor.localScale.x / 2);
-        BranchMat.SetFloat("_AvatarSize", AvatarSize);
         BranchMat.SetFloat("_BranchHeight", BranchHeight);
         BranchMat.SetFloat("_BranchThickness", BranchThickness);
         BranchMat.SetFloat("_BranchThicknessRamp", BranchThicknessRamp);
@@ -345,22 +344,15 @@ public class BranchComputeRunner : MonoBehaviour
         BranchMat.SetFloat("_BranchColorRamp", BranchColorRamp);
         BranchMat.SetFloat("_BranchColorOffset", BranchColorOffset);
 
-        BranchMat.SetBuffer("_CardMeshBuffer", _avatarMeshBuffer);
         BranchMat.SetBuffer("_FixedDataBuffer", _fixedDataBuffer);
         BranchMat.SetBuffer("_VariableDataBuffer", _variableDataBuffer);
-        BranchMat.SetTexture("_AvatarAtlas", _avatarLoader.AtlasTexture);
-        BranchMat.SetColor("_AvatarColor", AvatarFrame);
-        BranchMat.SetPass(0);
+        BranchMat.SetMatrix("_TreeTransform", transform.localToWorldMatrix);
 
         Graphics.DrawMeshInstancedProcedural(BranchMesh, 0, BranchMat, boundsSource.bounds, _nodeCount);
-
-        //BranchMat.SetPass(1);
-        //Graphics.DrawProcedural(MeshTopology.Quads, _avatarVertCount, _nodeCount);
     }
 
     private void OnDestroy()
     {
-        _avatarMeshBuffer.Dispose();
         _fixedDataBuffer.Dispose();
         _variableDataBuffer.Dispose();
         for (int i = 0; i < _siblingPairsBuffers.Length; i++)
